@@ -1,0 +1,8 @@
+{
+  "name": "SpeakCoach",
+  "description": "AI English Language Coach powered by Nvdia DeepSeek V4 Flash with real-time speech practice, instant grammar feedback, TTS voice player, and progress tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
