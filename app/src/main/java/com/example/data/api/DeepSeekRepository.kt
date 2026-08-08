@@ -24,14 +24,26 @@ enum class LlmProvider(
     val defaultModel: String,
     val availableModels: List<String>
 ) {
-    NVIDIA(
-        displayName = "NVIDIA NIM",
-        defaultBaseUrl = "https://integrate.api.nvidia.com/v1",
-        defaultModel = "deepseek-ai/deepseek-v4-flash",
+    CEREBRAS(
+        displayName = "Cerebras AI",
+        defaultBaseUrl = "https://api.cerebras.ai/v1",
+        defaultModel = "llama-3.3-70b",
         availableModels = listOf(
-            "deepseek-ai/deepseek-v4-flash",
-            "meta/llama-3.3-70b-instruct",
-            "deepseek-ai/deepseek-r1"
+            "llama-3.3-70b",
+            "llama3.1-8b",
+            "llama3.1-70b",
+            "deepseek-r1-distill-llama-70b"
+        )
+    ),
+    GEMINI(
+        displayName = "Google Gemini",
+        defaultBaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai",
+        defaultModel = "gemini-1.5-flash",
+        availableModels = listOf(
+            "gemini-1.5-flash",
+            "gemini-2.5-flash",
+            "gemini-3.5-flash",
+            "gemini-1.5-pro"
         )
     ),
     DEEPSEEK(
@@ -65,7 +77,8 @@ enum class LlmProvider(
         fun fromBaseUrl(url: String): LlmProvider {
             val lower = url.lowercase()
             return when {
-                lower.contains("nvidia") -> NVIDIA
+                lower.contains("cerebras") -> CEREBRAS
+                lower.contains("generativelanguage") || lower.contains("gemini") || lower.contains("google") -> GEMINI
                 lower.contains("deepseek") -> DEEPSEEK
                 lower.contains("groq") -> GROQ
                 else -> CUSTOM
@@ -102,8 +115,11 @@ class DeepSeekRepository {
     private val apiService = retrofit.create(DeepSeekApiService::class.java)
 
     companion object {
-        const val DEFAULT_NVIDIA_MODEL = "deepseek-ai/deepseek-v4-flash"
-        const val DEFAULT_NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
+        const val DEFAULT_CEREBRAS_MODEL = "llama-3.3-70b"
+        const val DEFAULT_CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
+
+        const val DEFAULT_GEMINI_MODEL = "gemini-1.5-flash"
+        const val DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
 
         const val DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
         const val DEFAULT_GROQ_BASE_URL = "https://api.groq.com/openai/v1"
@@ -113,7 +129,10 @@ class DeepSeekRepository {
             userName: String,
             nativeLanguage: String,
             scenarioContext: String?,
-            avoidReplies: List<String> = emptyList()
+            avoidReplies: List<String> = emptyList(),
+            userInterests: String = "",
+            conversationSummary: String = "",
+            learnedFacts: String = ""
         ): String {
             val levelInstruction = when {
                 cefrLevel.contains("A1", ignoreCase = true) ->
@@ -138,6 +157,17 @@ class DeepSeekRepository {
                 "User's native language: '$nativeLanguage'."
             } else "User's native language: Turkish."
 
+            val interestsPrompt = if (userInterests.isNotBlank()) {
+                "\nUSER HOBBIES & INTERESTS:\n$userInterests\nIncorporate these interests naturally into casual conversations, icebreakers, or analogies."
+            } else ""
+
+            val memoryPrompt = if (conversationSummary.isNotBlank() || learnedFacts.isNotBlank()) {
+                "\nBACKGROUND MEMORY & CONVERSATION CONTINUITY:\n" +
+                        (if (conversationSummary.isNotBlank()) "Recent Conversation Context: $conversationSummary\n" else "") +
+                        (if (learnedFacts.isNotBlank()) "Learned Facts About User: $learnedFacts\n" else "") +
+                        "CRITICAL: Maintain continuous dialogue context! Refer back seamlessly to what was previously discussed."
+            } else ""
+
             val scenarioPrompt = if (!scenarioContext.isNullOrBlank()) {
                 "\nACTIVE ROLEPLAY SCENARIO & CONTEXT:\n$scenarioContext\nStay in character! Drive the conversation organically based on the active scenario stage and variables."
             } else ""
@@ -156,17 +186,21 @@ USER PROFILE:
 - $userGreetingContext
 - $languageContext
 - $levelInstruction
+$interestsPrompt
+$memoryPrompt
 $scenarioPrompt
 $avoidPrompt
 
 PEDAGOGICAL & CONVERSATIONAL RULES:
-1. RESPONSE CHARACTER & DEPTH:
+1. RESPONSE CHARACTER, MEMORY & DEPTH:
+   - Treat the conversation as an ongoing personal friendship. Never feel like a cold stateless system.
    - React directly to the specifics of what the user said in their latest message.
+   - Refer seamlessly to previously discussed topics or learned facts from the BACKGROUND MEMORY.
    - Share thoughts, opinions, and realistic persona details instead of just asking questions.
    - Ask at most ONE follow-up question per turn. In some turns, respond naturally WITHOUT asking any question.
    - NEVER repeat previous questions or rephrase a question the user already answered.
    - Avoid generic overused praise ("That's great!", "That's interesting!"). Be genuine, patient, and encouraging.
-   - If user strays slightly off topic, build a natural bridge back to the scenario without being harsh.
+   - If user strays slightly off topic, build a natural bridge back to the topic without being harsh.
 
 2. CORRECTION & FEEDBACK:
    - Provide corrections ONLY if the user made genuine grammar, vocabulary, or phrasing errors.
@@ -208,19 +242,20 @@ Respond exclusively with valid JSON (no markdown formatting, no commentary):
         }
 
         fun migrateModelName(baseUrl: String, modelName: String): String {
-            if (baseUrl.contains("nvidia", ignoreCase = true)) {
-                if (modelName.isBlank() ||
-                    modelName.equals("deepseek-ai/deepseek-r1", ignoreCase = true) ||
-                    modelName.equals("deepseek-ai/deepseek-v3", ignoreCase = true)
-                ) {
-                    return DEFAULT_NVIDIA_MODEL
+            if (baseUrl.contains("cerebras", ignoreCase = true)) {
+                if (modelName.isBlank() || modelName.contains("nvidia", ignoreCase = true) || modelName.contains("v4-flash")) {
+                    return DEFAULT_CEREBRAS_MODEL
+                }
+            } else if (baseUrl.contains("generativelanguage") || baseUrl.contains("gemini") || baseUrl.contains("google")) {
+                if (modelName.isBlank() || modelName.contains("nvidia", ignoreCase = true)) {
+                    return DEFAULT_GEMINI_MODEL
                 }
             } else if (baseUrl.contains("groq", ignoreCase = true)) {
                 if (modelName.isBlank()) {
                     return DEFAULT_GROQ_MODEL
                 }
             }
-            return modelName.ifBlank { DEFAULT_NVIDIA_MODEL }
+            return modelName.ifBlank { DEFAULT_CEREBRAS_MODEL }
         }
 
         fun formatAndNormalizeMessages(
@@ -274,14 +309,17 @@ Respond exclusively with valid JSON (no markdown formatting, no commentary):
     suspend fun getCoachResponse(
         userInput: String,
         apiKey: String,
-        baseUrl: String = DEFAULT_NVIDIA_BASE_URL,
-        modelName: String = DEFAULT_NVIDIA_MODEL,
+        baseUrl: String = DEFAULT_CEREBRAS_BASE_URL,
+        modelName: String = DEFAULT_CEREBRAS_MODEL,
         cefrLevel: String = "CEFR B1-B2",
         userName: String = "",
         nativeLanguage: String = "Turkish (Türkçe)",
         scenarioContext: String? = null,
         chatHistory: List<ChatMessageItem> = emptyList(),
-        recentAssistantReplies: List<String> = emptyList()
+        recentAssistantReplies: List<String> = emptyList(),
+        userInterests: String = "",
+        conversationSummary: String = "",
+        learnedFacts: String = ""
     ): CoachJsonResponse {
         val trimmedKey = apiKey.trim()
         val provider = LlmProvider.fromBaseUrl(baseUrl)
@@ -300,7 +338,10 @@ Respond exclusively with valid JSON (no markdown formatting, no commentary):
             userName = userName,
             nativeLanguage = nativeLanguage,
             scenarioContext = scenarioContext,
-            avoidReplies = emptyList()
+            avoidReplies = emptyList(),
+            userInterests = userInterests,
+            conversationSummary = conversationSummary,
+            learnedFacts = learnedFacts
         )
 
         var normalizedMessages = formatAndNormalizeMessages(
@@ -351,7 +392,10 @@ Respond exclusively with valid JSON (no markdown formatting, no commentary):
                     userName = userName,
                     nativeLanguage = nativeLanguage,
                     scenarioContext = scenarioContext,
-                    avoidReplies = recentAssistantReplies.takeLast(3)
+                    avoidReplies = recentAssistantReplies.takeLast(3),
+                    userInterests = userInterests,
+                    conversationSummary = conversationSummary,
+                    learnedFacts = learnedFacts
                 )
                 normalizedMessages = formatAndNormalizeMessages(
                     systemPrompt = effectiveSystemPrompt,

@@ -100,6 +100,8 @@ fun OnboardingDialog(
     var nameInput by remember { mutableStateOf(uiState.userName) }
     var selectedNativeLang by remember { mutableStateOf(if (uiState.nativeLanguage.isBlank()) "Türkçe" else uiState.nativeLanguage) }
     var selectedLevel by remember { mutableStateOf(if (uiState.cefrLevel.isBlank()) "CEFR B1" else uiState.cefrLevel) }
+    var selectedInterests by remember { mutableStateOf(setOf<String>()) }
+    var customInterestInput by remember { mutableStateOf("") }
 
     var langDropdownExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -352,7 +354,99 @@ fun OnboardingDialog(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // 4. Audio Output Preference (Sesli / Yazılı)
+                    // 4. User Interests & Hobbies
+                    val interestOptions = remember {
+                        listOf(
+                            "🎬 Sinema & Dizi",
+                            "💻 Teknoloji & Yazılım",
+                            "⚽ Spor & Fitness",
+                            "✈️ Seyahat & Gezi",
+                            "🎵 Müzik & Sanat",
+                            "📚 Kitap & Edebiyat",
+                            "☕ Kahve & Yeme-İçme",
+                            "🎮 Oyunlar & Espor",
+                            "💼 İş & Kariyer"
+                        )
+                    }
+
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("4. İlgi Alanlarınız (Interests)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            }
+
+                            Text(
+                                text = "Koçunuz sizinle günlük samimi sohbetler yaparken bu konulardan bahseder.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Grid of selectable interest chips
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                interestOptions.chunked(3).forEach { rowItems ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        rowItems.forEach { interest ->
+                                            val isSelected = selectedInterests.contains(interest)
+                                            Surface(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    selectedInterests = if (isSelected) {
+                                                        selectedInterests - interest
+                                                    } else {
+                                                        selectedInterests + interest
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                                border = if (isSelected) androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Box(
+                                                    contentAlignment = Alignment.Center,
+                                                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
+                                                ) {
+                                                    Text(
+                                                        text = interest,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                                        maxLines = 1
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            OutlinedTextField(
+                                value = customInterestInput,
+                                onValueChange = { customInterestInput = it },
+                                label = { Text("Diğer Özel İlgi Alanları") },
+                                placeholder = { Text("Örn: Astronomi, Felsefe, Satranç") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 5. Audio Output Preference (Sesli / Yazılı)
                     var autoPlayTts by remember { mutableStateOf(uiState.autoPlayTts) }
                     Card(
                         shape = RoundedCornerShape(16.dp),
@@ -363,7 +457,7 @@ fun OnboardingDialog(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("4. Cevap Tercihi (Sesli / Yazılı)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                Text("5. Cevap Tercihi (Sesli / Yazılı)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                             }
 
                             Spacer(modifier = Modifier.height(6.dp))
@@ -403,10 +497,27 @@ fun OnboardingDialog(
                 Button(
                     onClick = {
                         val finalName = nameInput.ifBlank { "Öğrenci" }
+                        val englishInterests = selectedInterests.map { interest ->
+                            when {
+                                interest.contains("Sinema") -> "Movies & TV Shows"
+                                interest.contains("Teknoloji") -> "Technology & Software"
+                                interest.contains("Spor") -> "Sports & Fitness"
+                                interest.contains("Seyahat") -> "Travel & Tourism"
+                                interest.contains("Müzik") -> "Music & Art"
+                                interest.contains("Kitap") -> "Books & Literature"
+                                interest.contains("Kahve") -> "Coffee & Dining"
+                                interest.contains("Oyunlar") -> "Gaming & Esports"
+                                interest.contains("Kariyer") -> "Business & Career"
+                                else -> interest.trim()
+                            }
+                        }
+                        val customItems = customInterestInput.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                        val allInterests = (englishInterests + customItems).distinct().joinToString(", ")
                         viewModel.completeOnboarding(
                             name = finalName,
                             nativeLang = selectedNativeLang,
-                            level = selectedLevel
+                            level = selectedLevel,
+                            interests = allInterests
                         )
                         onDismiss()
                     },

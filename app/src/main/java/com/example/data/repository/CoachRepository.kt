@@ -2,6 +2,7 @@ package com.example.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.example.audio.TtsEngineMode
 import com.example.data.api.ChatMessageItem
 import com.example.data.api.CoachJsonResponse
 import com.example.data.api.DeepSeekRepository
@@ -26,11 +27,11 @@ class CoachRepository(context: Context) {
         context.getSharedPreferences("speakcoach_prefs", Context.MODE_PRIVATE)
 
     // Provider state
-    private val savedProviderName = prefs.getString("selected_provider", LlmProvider.NVIDIA.name) ?: LlmProvider.NVIDIA.name
+    private val savedProviderName = prefs.getString("selected_provider", LlmProvider.CEREBRAS.name) ?: LlmProvider.CEREBRAS.name
     private val initialProvider = try {
         LlmProvider.valueOf(savedProviderName)
     } catch (e: Exception) {
-        LlmProvider.NVIDIA
+        LlmProvider.CEREBRAS
     }
 
     private val _selectedProvider = MutableStateFlow(initialProvider)
@@ -62,6 +63,31 @@ class CoachRepository(context: Context) {
 
     private val _autoPlayTts = MutableStateFlow(prefs.getBoolean("auto_play_tts", true))
     val autoPlayTts: StateFlow<Boolean> = _autoPlayTts
+
+    private val savedEngineModeStr = prefs.getString("tts_engine_mode", TtsEngineMode.KOKORO_OFFLINE.name) ?: TtsEngineMode.KOKORO_OFFLINE.name
+    private val initialEngineMode = try { TtsEngineMode.valueOf(savedEngineModeStr) } catch (e: Exception) { TtsEngineMode.KOKORO_OFFLINE }
+    private val _ttsEngineMode = MutableStateFlow(initialEngineMode)
+    val ttsEngineMode: StateFlow<TtsEngineMode> = _ttsEngineMode
+
+    private val savedFallbackOptionStr = prefs.getString("fallback_engine_option", com.example.audio.FallbackEngineOption.ANDROID_SYSTEM.name) ?: com.example.audio.FallbackEngineOption.ANDROID_SYSTEM.name
+    private val initialFallbackOption = try { com.example.audio.FallbackEngineOption.valueOf(savedFallbackOptionStr) } catch (e: Exception) { com.example.audio.FallbackEngineOption.ANDROID_SYSTEM }
+    private val _fallbackEngineOption = MutableStateFlow(initialFallbackOption)
+    val fallbackEngineOption: StateFlow<com.example.audio.FallbackEngineOption> = _fallbackEngineOption
+
+    private val _allowAutoAndroidFallback = MutableStateFlow(prefs.getBoolean("allow_auto_android_fallback", true))
+    val allowAutoAndroidFallback: StateFlow<Boolean> = _allowAutoAndroidFallback
+
+    private val _kokoroFemaleVoice = MutableStateFlow(prefs.getString("kokoro_female_voice", "af_heart") ?: "af_heart")
+    val kokoroFemaleVoice: StateFlow<String> = _kokoroFemaleVoice
+
+    private val _kokoroMaleVoice = MutableStateFlow(prefs.getString("kokoro_male_voice", "am_michael") ?: "am_michael")
+    val kokoroMaleVoice: StateFlow<String> = _kokoroMaleVoice
+
+    private val _azureSpeechKey = MutableStateFlow(prefs.getString("azure_speech_key", "") ?: "")
+    val azureSpeechKey: StateFlow<String> = _azureSpeechKey
+
+    private val _azureSpeechRegion = MutableStateFlow(prefs.getString("azure_speech_region", "eastus") ?: "eastus")
+    val azureSpeechRegion: StateFlow<String> = _azureSpeechRegion
 
     private val _useEdgeNeuralTts = MutableStateFlow(prefs.getBoolean("use_edge_neural_tts", true))
     val useEdgeNeuralTts: StateFlow<Boolean> = _useEdgeNeuralTts
@@ -98,7 +124,22 @@ class CoachRepository(context: Context) {
     private val _activeScenarioSession = MutableStateFlow<com.example.data.model.ScenarioSessionState?>(null)
     val activeScenarioSession: StateFlow<com.example.data.model.ScenarioSessionState?> = _activeScenarioSession
 
+    val userMemory: Flow<com.example.data.local.UserMemoryEntity?> = dao.getUserMemoryFlow()
     val allMessages: Flow<List<ChatMessageEntity>> = dao.getAllMessages()
+
+    suspend fun saveUserInterests(interests: String) {
+        val current = dao.getUserMemory() ?: com.example.data.local.UserMemoryEntity()
+        dao.saveUserMemory(current.copy(interests = interests, lastUpdated = System.currentTimeMillis()))
+    }
+
+    suspend fun clearUserMemory() {
+        val current = dao.getUserMemory() ?: com.example.data.local.UserMemoryEntity()
+        dao.saveUserMemory(current.copy(conversationSummary = "", learnedFacts = "", lastUpdated = System.currentTimeMillis()))
+    }
+
+    suspend fun saveUserMemory(memory: com.example.data.local.UserMemoryEntity) {
+        dao.saveUserMemory(memory)
+    }
     val allGrammarTips: Flow<List<GrammarTipEntity>> = dao.getAllGrammarTips()
     val allSavedWords: Flow<List<SavedWordEntity>> = dao.getAllSavedWords()
     val userMessageCount: Flow<Int> = dao.getUserMessageCount()
@@ -106,17 +147,17 @@ class CoachRepository(context: Context) {
     val savedWordCount: Flow<Int> = dao.getSavedWordCount()
 
     init {
-        // Sync legacy api_key into nvidia if empty
+        // Sync legacy api_key into CEREBRAS if empty
         val legacyKey = prefs.getString("api_key", "") ?: ""
-        if (legacyKey.isNotBlank() && prefs.getString(getPrefKeyForApiKey(LlmProvider.NVIDIA), "").isNullOrBlank()) {
-            prefs.edit().putString(getPrefKeyForApiKey(LlmProvider.NVIDIA), legacyKey).apply()
+        if (legacyKey.isNotBlank() && prefs.getString(getPrefKeyForApiKey(LlmProvider.CEREBRAS), "").isNullOrBlank()) {
+            prefs.edit().putString(getPrefKeyForApiKey(LlmProvider.CEREBRAS), legacyKey).apply()
         }
     }
 
     fun getApiKeyForProvider(provider: LlmProvider): String {
         val prefKey = getPrefKeyForApiKey(provider)
         val saved = prefs.getString(prefKey, "") ?: ""
-        if (saved.isBlank() && provider == LlmProvider.NVIDIA) {
+        if (saved.isBlank() && provider == LlmProvider.CEREBRAS) {
             return prefs.getString("api_key", "") ?: ""
         }
         return saved
@@ -206,6 +247,43 @@ class CoachRepository(context: Context) {
     fun updateAutoPlayTts(enabled: Boolean) {
         prefs.edit().putBoolean("auto_play_tts", enabled).apply()
         _autoPlayTts.value = enabled
+    }
+
+    fun updateTtsEngineMode(mode: TtsEngineMode) {
+        prefs.edit().putString("tts_engine_mode", mode.name).apply()
+        _ttsEngineMode.value = mode
+    }
+
+    fun updateFallbackEngineOption(option: com.example.audio.FallbackEngineOption) {
+        prefs.edit().putString("fallback_engine_option", option.name).apply()
+        _fallbackEngineOption.value = option
+    }
+
+    fun updateKokoroFemaleVoice(voice: String) {
+        prefs.edit().putString("kokoro_female_voice", voice).apply()
+        _kokoroFemaleVoice.value = voice
+    }
+
+    fun updateKokoroMaleVoice(voice: String) {
+        prefs.edit().putString("kokoro_male_voice", voice).apply()
+        _kokoroMaleVoice.value = voice
+    }
+
+    fun updateAllowAutoAndroidFallback(allow: Boolean) {
+        prefs.edit().putBoolean("allow_auto_android_fallback", allow).apply()
+        _allowAutoAndroidFallback.value = allow
+    }
+
+    fun updateAzureSpeechKey(key: String) {
+        val trimmed = key.trim()
+        prefs.edit().putString("azure_speech_key", trimmed).apply()
+        _azureSpeechKey.value = trimmed
+    }
+
+    fun updateAzureSpeechRegion(region: String) {
+        val trimmed = region.trim()
+        prefs.edit().putString("azure_speech_region", trimmed).apply()
+        _azureSpeechRegion.value = trimmed
     }
 
     fun updateUseEdgeNeuralTts(useEdge: Boolean) {
@@ -317,6 +395,17 @@ class CoachRepository(context: Context) {
         return entity.copy(id = id)
     }
 
+    suspend fun saveCoachGreeting(text: String, scenario: String? = null): ChatMessageEntity {
+        val entity = ChatMessageEntity(
+            sender = "COACH",
+            text = text,
+            isVoice = false,
+            scenario = scenario
+        )
+        val id = dao.insertMessage(entity)
+        return entity.copy(id = id)
+    }
+
     suspend fun sendUserMessageAndGetCoachReply(
         userInput: String,
         isVoice: Boolean,
@@ -368,6 +457,12 @@ class CoachRepository(context: Context) {
             }
         }
 
+        // Fetch user memory from Room DB
+        val memoryEntity = dao.getUserMemory() ?: com.example.data.local.UserMemoryEntity()
+        val userInterests = memoryEntity.interests
+        val conversationSummary = memoryEntity.conversationSummary
+        val learnedFacts = memoryEntity.learnedFacts
+
         val coachOutput: CoachJsonResponse = deepSeekRepository.getCoachResponse(
             userInput = userInput,
             apiKey = _apiKey.value,
@@ -378,7 +473,10 @@ class CoachRepository(context: Context) {
             nativeLanguage = _nativeLanguage.value,
             scenarioContext = effectiveScenarioContext,
             chatHistory = apiHistory,
-            recentAssistantReplies = recentReplies
+            recentAssistantReplies = recentReplies,
+            userInterests = userInterests,
+            conversationSummary = conversationSummary,
+            learnedFacts = learnedFacts
         )
 
         // Update session state if present
@@ -417,6 +515,29 @@ class CoachRepository(context: Context) {
         if (!coachOutput.feedback.isNullOrBlank()) {
             val tip = parseFeedbackToGrammarTip(userInput, coachOutput.feedback)
             dao.insertGrammarTip(tip)
+        }
+
+        // Auto-update persistent conversation memory & learned facts after turn
+        try {
+            val newFacts = coachOutput.learnedUserFacts ?: emptyList()
+            val existingFactsList = learnedFacts.split("\n").map { it.trim() }.filter { it.isNotBlank() }
+            val updatedFactsList = (existingFactsList + newFacts).distinct().takeLast(12)
+            val updatedFactsStr = updatedFactsList.joinToString("\n")
+
+            val newTurnSummary = "User: \"${userInput.take(90)}\" | Coach: \"${coachOutput.response.take(90)}\""
+            val existingSummaryLines = conversationSummary.split("\n").map { it.trim() }.filter { it.isNotBlank() }
+            val updatedSummaryList = (existingSummaryLines + newTurnSummary).takeLast(6)
+            val updatedSummaryStr = updatedSummaryList.joinToString("\n")
+
+            dao.saveUserMemory(
+                memoryEntity.copy(
+                    conversationSummary = updatedSummaryStr,
+                    learnedFacts = updatedFactsStr,
+                    lastUpdated = System.currentTimeMillis()
+                )
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("CoachRepository", "Failed to update user memory: ${e.message}")
         }
 
         return coachMessageEntity.copy(id = coachMsgId)

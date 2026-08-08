@@ -124,7 +124,7 @@ fun SettingsScreen(viewModel: CoachViewModel) {
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Text(
-                    text = "Profil, AI Sağlayıcı (NVIDIA/DeepSeek/Groq), Konuşma Hızı ve Düzeltme Dili",
+                    text = "Profil, AI Sağlayıcı (Cerebras/Gemini/DeepSeek/Groq), Konuşma Hızı ve Düzeltme Dili",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -226,6 +226,110 @@ fun SettingsScreen(viewModel: CoachViewModel) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // AI Memory & User Interests Card
+        var userInterestsInput by remember(uiState.userMemory?.interests) {
+            mutableStateOf(uiState.userMemory?.interests ?: "")
+        }
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.SmartToy,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "🧠 Arka Plan Hafızası & İlgi Alanları",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedTextField(
+                    value = userInterestsInput,
+                    onValueChange = {
+                        userInterestsInput = it
+                        viewModel.updateUserInterests(it)
+                    },
+                    label = { Text("İlgi Alanlarınız & Hobileriniz") },
+                    placeholder = { Text("Örn: Sinema, Teknoloji, Spor, Seyahat, Kahve") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (!uiState.userMemory?.conversationSummary.isNullOrBlank() || !uiState.userMemory?.learnedFacts.isNullOrBlank()) {
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "📌 Hafızadaki Son Konuşma Özeti:",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = uiState.userMemory?.conversationSummary?.ifBlank { "Henüz özet bulunmuyor." } ?: "",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            if (!uiState.userMemory?.learnedFacts.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "💡 Hakkınızda Öğrenilen Bilgiler:",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = uiState.userMemory?.learnedFacts ?: "",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedButton(
+                        onClick = { viewModel.clearUserMemory() },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Konuşma Hafızasını Sıfırla", fontSize = 13.sp)
+                    }
+                } else {
+                    Text(
+                        text = "Siz Koçla konuştukça sohbet özetleri ve hakkınızda öğrenilen detaylar otomatik olarak SQLite hafızasına kaydedilecektir.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         // 2. Speech Rate & Voice Mode Controls
         Card(
             shape = RoundedCornerShape(16.dp),
@@ -285,53 +389,433 @@ fun SettingsScreen(viewModel: CoachViewModel) {
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Microsoft Edge Neural TTS Engine Switch
+                // 2. TTS Provider & Mode Selector Card
                 Card(
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (uiState.useEdgeNeuralTts) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceVariant
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "⚡",
-                                    fontSize = 18.sp
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = "🔊 TTS Sağlayıcı / Motor Seçimi:",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        val modes = com.example.audio.TtsEngineMode.values()
+                        modes.forEach { mode ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel.updateTtsEngineMode(mode) }
+                                    .padding(vertical = 4.dp)
+                            ) {
+                                RadioButton(
+                                    selected = (uiState.ttsEngineMode == mode),
+                                    onClick = { viewModel.updateTtsEngineMode(mode) }
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Column {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = mode.displayName,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        if (mode == com.example.audio.TtsEngineMode.KOKORO_OFFLINE) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Surface(
+                                                color = Emerald500.copy(alpha = 0.2f),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "ÖNERİLEN • OFF-LINE",
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Emerald500,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        } else if (mode == com.example.audio.TtsEngineMode.EDGE_EXPERIMENTAL) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Surface(
+                                                color = MaterialTheme.colorScheme.tertiaryContainer,
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "DENEYSEL • CANLI",
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    val subtitle = when(mode) {
+                                        com.example.audio.TtsEngineMode.KOKORO_OFFLINE -> "Yapay zeka ses modeli cihazınızda çalışır (İnternetsiz & Yüksek Kalite)"
+                                        com.example.audio.TtsEngineMode.EDGE_EXPERIMENTAL -> "Microsoft Edge sunucuları üzerinden canlı ses sentezi (İnternet Gerektirir)"
+                                        com.example.audio.TtsEngineMode.ANDROID_SYSTEM -> "Cihazınızdaki yerleşik Android/Google TTS motoru (Garantili & Hızlı)"
+                                    }
                                     Text(
-                                        text = "Microsoft Edge Neural TTS (Canlı Ses)",
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = if (uiState.useEdgeNeuralTts) "Microsoft Yapay Zeka Gerçekçi İnsan Sesi (Ücretsiz)" else "Cihaz Dahili (Android Standart TTS)",
-                                        style = MaterialTheme.typography.labelSmall,
+                                        text = subtitle,
+                                        fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
-                            Switch(
-                                checked = uiState.useEdgeNeuralTts,
-                                onCheckedChange = { viewModel.updateUseEdgeNeuralTts(it) },
-                                modifier = Modifier.testTag("edge_neural_tts_switch")
-                            )
                         }
 
-                        if (uiState.useEdgeNeuralTts) {
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Active Engine Status Indicator Box
+                        val activeStatusText = when (uiState.ttsStatus) {
+                            is com.example.audio.TtsStatus.Idle -> "Hazır"
+                            is com.example.audio.TtsStatus.ModelNotDownloaded -> "Model İndirilmedi"
+                            is com.example.audio.TtsStatus.Downloading -> "Model İndiriliyor..."
+                            is com.example.audio.TtsStatus.Verifying -> "Model Doğrulanıyor..."
+                            is com.example.audio.TtsStatus.Initializing -> "Motor Başlatılıyor..."
+                            is com.example.audio.TtsStatus.Synthesizing -> "Ses Üretiliyor..."
+                            is com.example.audio.TtsStatus.Playing -> "Çalınıyor 🔊"
+                            is com.example.audio.TtsStatus.Error -> "Hata: ${(uiState.ttsStatus as com.example.audio.TtsStatus.Error).message}"
+                            else -> "Beklemede"
+                        }
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text(
+                                    text = "🎯 Seçili Motor: ${uiState.ttsEngineMode.displayName}",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "⚡ Durum: $activeStatusText",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        // KOKORO OFFLINE MODEL MANAGEMENT CARD
+                        if (uiState.ttsEngineMode == com.example.audio.TtsEngineMode.KOKORO_OFFLINE) {
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            // Female Neural Voice Selector
+                            val isModelReady = viewModel.ttsManager.kokoroModelManager.isModelReady()
+                            val downloadStatus = viewModel.ttsManager.kokoroModelManager.status.collectAsState().value
+
+                            Card(
+                                shape = RoundedCornerShape(10.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surface
+                                ),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "🧠 Kokoro v1.1 Neural Model",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Surface(
+                                            color = if (isModelReady) Emerald500.copy(alpha = 0.2f) else MaterialTheme.colorScheme.errorContainer,
+                                            shape = RoundedCornerShape(4.dp)
+                                        ) {
+                                            Text(
+                                                text = if (isModelReady) "HAZIR (${String.format("%.1f", uiState.kokoroModelDiskSizeMb)} MB)" else "İNDİRİLMEDİ",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isModelReady) Emerald500 else MaterialTheme.colorScheme.onErrorContainer,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = "Model: kokoro-multi-lang-v1_1 int8 ONNX (Yaklaşık 85 MB tar.bz2)",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    // Download Progress Info
+                                    when (downloadStatus) {
+                                        is com.example.audio.TtsStatus.Downloading -> {
+                                            val progressPercent = (downloadStatus.progress * 100).toInt()
+                                            val downloadedMb = downloadStatus.downloadedBytes / (1024f * 1024f)
+                                            val totalMb = downloadStatus.totalBytes / (1024f * 1024f)
+
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            androidx.compose.material3.LinearProgressIndicator(
+                                                progress = { downloadStatus.progress },
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(
+                                                    text = "İndiriliyor: %$progressPercent (${String.format("%.1f", downloadedMb)} / ${String.format("%.1f", totalMb)} MB)",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                                TextButton(
+                                                    onClick = { viewModel.cancelKokoroDownload() },
+                                                    contentPadding = PaddingValues(0.dp)
+                                                ) {
+                                                    Text("İptal Et", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                                                }
+                                            }
+                                        }
+                                        is com.example.audio.TtsStatus.Verifying -> {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            androidx.compose.material3.LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = "📦 Model dosyaları doğrulanıyor ve kuruluyor... Lütfen bekleyin.",
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                        is com.example.audio.TtsStatus.Error -> {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Surface(
+                                                color = MaterialTheme.colorScheme.errorContainer,
+                                                shape = RoundedCornerShape(6.dp),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text(
+                                                    text = "❌ İndirme Hatası: ${downloadStatus.message}",
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                                    modifier = Modifier.padding(8.dp)
+                                                )
+                                            }
+                                        }
+                                        else -> {}
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Action buttons for Kokoro model
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        if (!isModelReady && downloadStatus !is com.example.audio.TtsStatus.Downloading) {
+                                            Button(
+                                                onClick = { viewModel.downloadKokoroModel() },
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(8.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Emerald500)
+                                            ) {
+                                                Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Kokoro Modelini İndir", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        } else if (isModelReady) {
+                                            OutlinedButton(
+                                                onClick = { viewModel.deleteKokoroModel() },
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(8.dp),
+                                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                                            ) {
+                                                Icon(imageVector = Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Modeli Sil", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    // Kokoro Female Voice Selector
+                                    Text(
+                                        text = "👩 MAYA Kokoro Ses Modeli:",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    val kokoroFemaleOptions = listOf(
+                                        "af_heart" to "af_heart (Sıcak & Doğal Kadın - Önerilen)",
+                                        "af_bella" to "af_bella (Akıcı & Samimi)",
+                                        "af_sarah" to "af_sarah (Net & Resmi)"
+                                    )
+
+                                    var kFemaleExpanded by remember { mutableStateOf(false) }
+
+                                    Box {
+                                        OutlinedButton(
+                                            onClick = { kFemaleExpanded = true },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text(
+                                                text = kokoroFemaleOptions.firstOrNull { it.first == uiState.kokoroFemaleVoice }?.second ?: uiState.kokoroFemaleVoice,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                        DropdownMenu(
+                                            expanded = kFemaleExpanded,
+                                            onDismissRequest = { kFemaleExpanded = false }
+                                        ) {
+                                            kokoroFemaleOptions.forEach { (vId, label) ->
+                                                DropdownMenuItem(
+                                                    text = { Text(label, style = MaterialTheme.typography.bodySmall) },
+                                                    onClick = {
+                                                        viewModel.updateKokoroFemaleVoice(vId)
+                                                        kFemaleExpanded = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Kokoro Male Voice Selector
+                                    Text(
+                                        text = "👨 LEO Kokoro Ses Modeli:",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    val kokoroMaleOptions = listOf(
+                                        "am_michael" to "am_michael (Sıcak Erkek - Önerilen)",
+                                        "am_adam" to "am_adam (Derin & Karizmatik)",
+                                        "am_liam" to "am_liam (Genç & Enerjik)"
+                                    )
+
+                                    var kMaleExpanded by remember { mutableStateOf(false) }
+
+                                    Box {
+                                        OutlinedButton(
+                                            onClick = { kMaleExpanded = true },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text(
+                                                text = kokoroMaleOptions.firstOrNull { it.first == uiState.kokoroMaleVoice }?.second ?: uiState.kokoroMaleVoice,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                        DropdownMenu(
+                                            expanded = kMaleExpanded,
+                                            onDismissRequest = { kMaleExpanded = false }
+                                        ) {
+                                            kokoroMaleOptions.forEach { (vId, label) ->
+                                                DropdownMenuItem(
+                                                    text = { Text(label, style = MaterialTheme.typography.bodySmall) },
+                                                    onClick = {
+                                                        viewModel.updateKokoroMaleVoice(vId)
+                                                        kMaleExpanded = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Audio Cache Management
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "💾 Ses Önbelleği: ${String.format("%.2f", uiState.kokoroCacheSizeMb)} MB / 100 MB",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        TextButton(
+                                            onClick = { viewModel.clearAudioCache() },
+                                            contentPadding = PaddingValues(0.dp)
+                                        ) {
+                                            Text("Önbelleği Temizle", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // FALLBACK ENGINE CONFIGURATION
+                        Text(
+                            text = "🔄 Otomatik Yedek Motor Seçeneği:",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        val fallbackOptions = com.example.audio.FallbackEngineOption.values()
+                        fallbackOptions.forEach { option ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel.updateFallbackEngineOption(option) }
+                                    .padding(vertical = 2.dp)
+                            ) {
+                                RadioButton(
+                                    selected = (uiState.fallbackEngineOption == option),
+                                    onClick = { viewModel.updateFallbackEngineOption(option) }
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Text(
+                                        text = option.displayName,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    val desc = when(option) {
+                                        com.example.audio.FallbackEngineOption.OFF -> "Yedek motor kullanma - Başarısızlık durumunda hatayı bildir"
+                                        com.example.audio.FallbackEngineOption.KOKORO -> "Ana motor başarısız olursa (Kokoro hazırsa) Kokoro'ya düş"
+                                        com.example.audio.FallbackEngineOption.ANDROID_SYSTEM -> "Ana motor başarısız olursa yerleşik Android System TTS'ye düş (Önerilen)"
+                                    }
+                                    Text(
+                                        text = desc,
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        if (uiState.ttsEngineMode == com.example.audio.TtsEngineMode.EDGE_EXPERIMENTAL) {
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Female Edge Neural Voice Selector
                             Text(
-                                text = "👩 MAYA (Kadın Ses Modeli):",
+                                text = "👩 MAYA Edge Ses Modeli:",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -377,9 +861,9 @@ fun SettingsScreen(viewModel: CoachViewModel) {
 
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            // Male Neural Voice Selector
+                            // Male Edge Neural Voice Selector
                             Text(
-                                text = "👨 LEO (Erkek Ses Modeli):",
+                                text = "👨 LEO Edge Ses Modeli:",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -418,6 +902,76 @@ fun SettingsScreen(viewModel: CoachViewModel) {
                                                 viewModel.updateMaleEdgeVoice(voiceId)
                                                 maleExpanded = false
                                             }
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Microsoft TTS Connection Test Button
+                            OutlinedButton(
+                                onClick = { viewModel.testMicrosoftTtsConnection() },
+                                enabled = !uiState.isTestingTts,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("test_microsoft_tts_button"),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                if (uiState.isTestingTts) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Microsoft TTS Test Ediliyor...", fontSize = 12.sp)
+                                } else {
+                                    Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("⚡ Edge TTS Bağlantısını Test Et", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                }
+                            }
+
+                            // Test Result Banner
+                            uiState.ttsTestResult?.let { testRes ->
+                                Spacer(modifier = Modifier.height(8.dp))
+                                val cardBg = if (testRes.success) Emerald500.copy(alpha = 0.15f) else MaterialTheme.colorScheme.errorContainer
+                                val contentColor = if (testRes.success) Emerald500 else MaterialTheme.colorScheme.onErrorContainer
+
+                                Surface(
+                                    color = cardBg,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = if (testRes.success) Icons.Default.CheckCircle else Icons.Default.Error,
+                                                contentDescription = null,
+                                                tint = contentColor,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = if (testRes.success) "TTS Bağlantısı Başarılı!" else "TTS Bağlantı Hatası",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                color = contentColor
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Motor: ${testRes.engineName} • Ses: ${testRes.voiceId}" +
+                                                    (testRes.httpStatusCode?.let { " • HTTP $it" } ?: ""),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = contentColor
+                                        )
+                                        Text(
+                                            text = testRes.message,
+                                            fontSize = 11.sp,
+                                            color = contentColor
                                         )
                                     }
                                 }
@@ -590,10 +1144,10 @@ fun SettingsScreen(viewModel: CoachViewModel) {
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Quick Preset Chips for NVIDIA, DeepSeek, Groq
+                // Quick Preset Chips for Cerebras, Gemini, DeepSeek, Groq
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     LlmProvider.values().filter { it != LlmProvider.CUSTOM }.forEach { provider ->
                         val isSelected = uiState.selectedProvider == provider
@@ -604,15 +1158,16 @@ fun SettingsScreen(viewModel: CoachViewModel) {
                                 contentColor = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                             ),
                             modifier = Modifier.weight(1f),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                            contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp)
                         ) {
                             val prefix = when(provider) {
-                                LlmProvider.NVIDIA -> "🟢"
+                                LlmProvider.CEREBRAS -> "🧠"
+                                LlmProvider.GEMINI -> "✨"
                                 LlmProvider.DEEPSEEK -> "🔵"
                                 LlmProvider.GROQ -> "⚡"
                                 else -> "⚙️"
                             }
-                            Text("$prefix ${provider.name}", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("$prefix ${provider.name}", fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                         }
                     }
                 }
@@ -686,8 +1241,9 @@ fun SettingsScreen(viewModel: CoachViewModel) {
 
                 // API Key Input
                 val apiKeyPlaceholder = when (uiState.selectedProvider) {
+                    LlmProvider.CEREBRAS -> "csk-..."
+                    LlmProvider.GEMINI -> "AIzaSy..."
                     LlmProvider.GROQ -> "gsk_..."
-                    LlmProvider.NVIDIA -> "nvapi-..."
                     LlmProvider.DEEPSEEK -> "sk-..."
                     LlmProvider.CUSTOM -> "api-key-..."
                 }

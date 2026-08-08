@@ -50,4 +50,13 @@ interface CoachDao {
 
     @Query("SELECT COUNT(*) FROM saved_words")
     fun getSavedWordCount(): Flow<Int>
+
+    @Query("SELECT * FROM user_memory WHERE id = 1")
+    fun getUserMemoryFlow(): Flow<UserMemoryEntity?>
+
+    @Query("SELECT * FROM user_memory WHERE id = 1")
+    suspend fun getUserMemory(): UserMemoryEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun saveUserMemory(memory: UserMemoryEntity)
 }

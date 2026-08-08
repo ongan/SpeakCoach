@@ -6,6 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.example.audio.SpeechRecognizerManager
 import com.example.audio.SpeechState
 import com.example.audio.TextToSpeechManager
+import com.example.audio.TtsEngineMode
+import com.example.audio.TtsProvider
+import com.example.audio.TtsStatus
+import com.example.audio.TtsTestResult
 import com.example.data.api.DeepSeekRepository
 import com.example.data.api.LlmProvider
 import com.example.data.api.WordDefinition
@@ -35,18 +39,26 @@ data class CoachUiState(
     val activeScenario: String? = null,
     val userMessageCount: Int = 0,
     val grammarTipCount: Int = 0,
-    val selectedProvider: LlmProvider = LlmProvider.NVIDIA,
+    val selectedProvider: LlmProvider = LlmProvider.CEREBRAS,
     val apiKey: String = "",
-    val baseUrl: String = DeepSeekRepository.DEFAULT_NVIDIA_BASE_URL,
-    val modelName: String = DeepSeekRepository.DEFAULT_NVIDIA_MODEL,
+    val baseUrl: String = DeepSeekRepository.DEFAULT_CEREBRAS_BASE_URL,
+    val modelName: String = DeepSeekRepository.DEFAULT_CEREBRAS_MODEL,
     val cefrLevel: String = "CEFR B1-B2",
     val userName: String = "",
     val nativeLanguage: String = "Türkçe",
     val isOnboardingCompleted: Boolean = false,
     val autoPlayTts: Boolean = true,
-    val useEdgeNeuralTts: Boolean = true,
+    val ttsEngineMode: TtsEngineMode = TtsEngineMode.KOKORO_OFFLINE,
+    val fallbackEngineOption: com.example.audio.FallbackEngineOption = com.example.audio.FallbackEngineOption.ANDROID_SYSTEM,
+    val allowAutoAndroidFallback: Boolean = true,
+    val azureSpeechKey: String = "",
+    val azureSpeechRegion: String = "eastus",
     val femaleEdgeVoice: String = "en-US-AvaNeural",
     val maleEdgeVoice: String = "en-US-AndrewNeural",
+    val kokoroFemaleVoice: String = "af_heart",
+    val kokoroMaleVoice: String = "am_michael",
+    val kokoroModelDiskSizeMb: Float = 0f,
+    val kokoroCacheSizeMb: Float = 0f,
     val speechRate: Float = 1.0f,
     val selectedCoachGender: com.example.data.model.CoachGender = com.example.data.model.CoachGender.MAYA,
     val showCoachAvatar: Boolean = true,
@@ -55,7 +67,12 @@ data class CoachUiState(
     val completedSceneIds: Set<String> = emptySet(),
     val activeScenarioSession: com.example.data.model.ScenarioSessionState? = null,
     val errorMessage: String? = null,
-    val testState: ConnectionTestState = ConnectionTestState.Idle
+    val testState: ConnectionTestState = ConnectionTestState.Idle,
+    val ttsStatus: TtsStatus = TtsStatus.Idle,
+    val ttsTestResult: TtsTestResult? = null,
+    val isTestingTts: Boolean = false,
+    val useEdgeNeuralTts: Boolean = true,
+    val userMemory: com.example.data.local.UserMemoryEntity? = null
 )
 
 class CoachViewModel(application: Application) : AndroidViewModel(application) {
@@ -75,6 +92,12 @@ class CoachViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _testState = MutableStateFlow<ConnectionTestState>(ConnectionTestState.Idle)
     val testState: StateFlow<ConnectionTestState> = _testState.asStateFlow()
+
+    private val _ttsTestResult = MutableStateFlow<TtsTestResult?>(null)
+    val ttsTestResult: StateFlow<TtsTestResult?> = _ttsTestResult.asStateFlow()
+
+    private val _isTestingTts = MutableStateFlow(false)
+    val isTestingTts: StateFlow<Boolean> = _isTestingTts.asStateFlow()
 
     val messagesState: StateFlow<List<ChatMessageEntity>> = repository.allMessages
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -110,59 +133,84 @@ class CoachViewModel(application: Application) : AndroidViewModel(application) {
     val translatingIds: StateFlow<Set<Long>> = _translatingIds.asStateFlow()
 
     val uiState: StateFlow<CoachUiState> = combine(
-        repository.allMessages,
-        repository.allGrammarTips,
-        _isLoadingAi,
-        _activeScenario,
-        repository.selectedProvider,
-        repository.apiKey,
-        repository.baseUrl,
-        repository.modelName,
-        repository.cefrLevel,
-        repository.userName,
-        repository.nativeLanguage,
-        repository.isOnboardingCompleted,
-        repository.autoPlayTts,
-        repository.useEdgeNeuralTts,
-        repository.femaleEdgeVoice,
-        repository.maleEdgeVoice,
-        repository.speechRate,
-        repository.selectedCoachGender,
-        repository.showCoachAvatar,
-        repository.showChatBubbles,
-        repository.unlockAllStoryChapters,
-        repository.completedSceneIds,
-        repository.activeScenarioSession,
-        _errorMessage,
-        _testState
-    ) { args: Array<Any?> ->
-        @Suppress("UNCHECKED_CAST")
+        combine(
+            repository.allMessages,
+            repository.allGrammarTips,
+            _isLoadingAi,
+            _activeScenario,
+            repository.selectedProvider,
+            repository.apiKey,
+            repository.baseUrl,
+            repository.modelName,
+            repository.cefrLevel,
+            repository.userName,
+            repository.nativeLanguage,
+            repository.isOnboardingCompleted,
+            repository.autoPlayTts
+        ) { args -> args },
+        combine(
+            repository.ttsEngineMode,
+            repository.fallbackEngineOption,
+            repository.allowAutoAndroidFallback,
+            repository.kokoroFemaleVoice,
+            repository.kokoroMaleVoice,
+            repository.femaleEdgeVoice,
+            repository.maleEdgeVoice,
+            repository.speechRate,
+            repository.selectedCoachGender,
+            repository.showCoachAvatar,
+            repository.showChatBubbles,
+            repository.unlockAllStoryChapters,
+            repository.completedSceneIds
+        ) { args -> args },
+        combine(
+            repository.activeScenarioSession,
+            _errorMessage,
+            _testState,
+            ttsManager.ttsStatus,
+            _ttsTestResult,
+            _isTestingTts,
+            repository.useEdgeNeuralTts,
+            repository.userMemory
+        ) { args -> args }
+    ) { group1, group2, group3 ->
         CoachUiState(
-            messages = args[0] as List<ChatMessageEntity>,
-            grammarTips = args[1] as List<GrammarTipEntity>,
-            isLoadingAi = args[2] as Boolean,
-            activeScenario = args[3] as String?,
-            selectedProvider = args[4] as LlmProvider,
-            apiKey = args[5] as String,
-            baseUrl = args[6] as String,
-            modelName = args[7] as String,
-            cefrLevel = args[8] as String,
-            userName = args[9] as String,
-            nativeLanguage = args[10] as String,
-            isOnboardingCompleted = args[11] as Boolean,
-            autoPlayTts = args[12] as Boolean,
-            useEdgeNeuralTts = args[13] as Boolean,
-            femaleEdgeVoice = args[14] as String,
-            maleEdgeVoice = args[15] as String,
-            speechRate = args[16] as Float,
-            selectedCoachGender = args[17] as com.example.data.model.CoachGender,
-            showCoachAvatar = args[18] as Boolean,
-            showChatBubbles = args[19] as Boolean,
-            unlockAllStoryChapters = args[20] as Boolean,
-            completedSceneIds = args[21] as Set<String>,
-            activeScenarioSession = args[22] as com.example.data.model.ScenarioSessionState?,
-            errorMessage = args[23] as String?,
-            testState = args[24] as ConnectionTestState
+            messages = group1[0] as List<ChatMessageEntity>,
+            grammarTips = group1[1] as List<GrammarTipEntity>,
+            isLoadingAi = group1[2] as Boolean,
+            activeScenario = group1[3] as String?,
+            selectedProvider = group1[4] as LlmProvider,
+            apiKey = group1[5] as String,
+            baseUrl = group1[6] as String,
+            modelName = group1[7] as String,
+            cefrLevel = group1[8] as String,
+            userName = group1[9] as String,
+            nativeLanguage = group1[10] as String,
+            isOnboardingCompleted = group1[11] as Boolean,
+            autoPlayTts = group1[12] as Boolean,
+            ttsEngineMode = group2[0] as TtsEngineMode,
+            fallbackEngineOption = group2[1] as com.example.audio.FallbackEngineOption,
+            allowAutoAndroidFallback = group2[2] as Boolean,
+            kokoroFemaleVoice = group2[3] as String,
+            kokoroMaleVoice = group2[4] as String,
+            femaleEdgeVoice = group2[5] as String,
+            maleEdgeVoice = group2[6] as String,
+            kokoroModelDiskSizeMb = ttsManager.kokoroModelManager.getModelDiskSizeMb(),
+            kokoroCacheSizeMb = ttsManager.kokoroCacheManager.getCacheSizeMb(),
+            speechRate = group2[7] as Float,
+            selectedCoachGender = group2[8] as com.example.data.model.CoachGender,
+            showCoachAvatar = group2[9] as Boolean,
+            showChatBubbles = group2[10] as Boolean,
+            unlockAllStoryChapters = group2[11] as Boolean,
+            completedSceneIds = group2[12] as Set<String>,
+            activeScenarioSession = group3[0] as com.example.data.model.ScenarioSessionState?,
+            errorMessage = group3[1] as String?,
+            testState = group3[2] as ConnectionTestState,
+            ttsStatus = group3[3] as TtsStatus,
+            ttsTestResult = group3[4] as TtsTestResult?,
+            isTestingTts = group3[5] as Boolean,
+            useEdgeNeuralTts = group3[6] as Boolean,
+            userMemory = group3[7] as com.example.data.local.UserMemoryEntity?
         )
     }.stateIn(
         viewModelScope,
@@ -184,11 +232,32 @@ class CoachViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         viewModelScope.launch {
-            combine(repository.useEdgeNeuralTts, repository.femaleEdgeVoice, repository.maleEdgeVoice) { useEdge, female, male ->
-                Triple(useEdge, female, male)
-            }.collect { (useEdge, female, male) ->
-                ttsManager.setUseEdgeNeural(useEdge)
+            repository.ttsEngineMode.collect { mode ->
+                ttsManager.setEngineMode(mode)
+            }
+        }
+        viewModelScope.launch {
+            repository.fallbackEngineOption.collect { option ->
+                ttsManager.setFallbackEngineOption(option)
+            }
+        }
+        viewModelScope.launch {
+            combine(repository.kokoroFemaleVoice, repository.kokoroMaleVoice) { female, male ->
+                female to male
+            }.collect { (female, male) ->
+                ttsManager.setKokoroVoices(female, male)
+            }
+        }
+        viewModelScope.launch {
+            combine(repository.femaleEdgeVoice, repository.maleEdgeVoice) { female, male ->
+                female to male
+            }.collect { (female, male) ->
                 ttsManager.setEdgeVoices(female, male)
+            }
+        }
+        viewModelScope.launch {
+            repository.speechRate.collect { rate ->
+                ttsManager.setSpeechRate(rate)
             }
         }
     }
@@ -351,6 +420,93 @@ class CoachViewModel(application: Application) : AndroidViewModel(application) {
         ttsManager.setSpeechRate(rate)
     }
 
+    fun updateTtsEngineMode(mode: TtsEngineMode) {
+        repository.updateTtsEngineMode(mode)
+        ttsManager.setEngineMode(mode)
+    }
+
+    fun updateFallbackEngineOption(option: com.example.audio.FallbackEngineOption) {
+        repository.updateFallbackEngineOption(option)
+        ttsManager.setFallbackEngineOption(option)
+    }
+
+    fun updateKokoroFemaleVoice(voice: String) {
+        repository.updateKokoroFemaleVoice(voice)
+        ttsManager.setKokoroVoices(voice, uiState.value.kokoroMaleVoice)
+    }
+
+    fun updateKokoroMaleVoice(voice: String) {
+        repository.updateKokoroMaleVoice(voice)
+        ttsManager.setKokoroVoices(uiState.value.kokoroFemaleVoice, voice)
+    }
+
+    fun downloadKokoroModel() {
+        ttsManager.kokoroModelManager.downloadModel(viewModelScope) { success, errorMsg ->
+            if (!success && !errorMsg.isNullOrBlank()) {
+                _errorMessage.value = errorMsg
+            }
+        }
+    }
+
+    fun cancelKokoroDownload() {
+        ttsManager.kokoroModelManager.cancelDownload()
+    }
+
+    fun deleteKokoroModel() {
+        ttsManager.kokoroModelManager.deleteModel()
+        ttsManager.clearAudioCache()
+    }
+
+    fun clearAudioCache() {
+        ttsManager.clearAudioCache()
+    }
+
+    fun updateAllowAutoAndroidFallback(allow: Boolean) {
+        repository.updateAllowAutoAndroidFallback(allow)
+        ttsManager.setAllowAutoAndroidFallback(allow)
+    }
+
+    fun updateAzureSpeechKey(key: String) {
+        repository.updateAzureSpeechKey(key)
+    }
+
+    fun updateAzureSpeechRegion(region: String) {
+        repository.updateAzureSpeechRegion(region)
+    }
+
+    fun testTtsConnection() {
+        val current = uiState.value
+        val voice = if (current.selectedCoachGender == com.example.data.model.CoachGender.LEO) current.maleEdgeVoice else current.femaleEdgeVoice
+
+        viewModelScope.launch {
+            _isTestingTts.value = true
+            _ttsTestResult.value = null
+            try {
+                val result = ttsManager.testConnection(
+                    mode = current.ttsEngineMode,
+                    voice = voice
+                )
+                _ttsTestResult.value = result
+            } catch (e: Exception) {
+                val prov = if (current.ttsEngineMode == TtsEngineMode.KOKORO_OFFLINE) TtsProvider.KOKORO_OFFLINE else TtsProvider.EDGE_CONSUMER
+                _ttsTestResult.value = TtsTestResult(
+                    success = false,
+                    provider = prov,
+                    engineName = current.ttsEngineMode.displayName,
+                    voiceId = voice,
+                    httpStatusCode = null,
+                    message = e.message ?: "Bağlantı testi sırasında hata oluştu."
+                )
+            } finally {
+                _isTestingTts.value = false
+            }
+        }
+    }
+
+    fun testMicrosoftTtsConnection() {
+        testTtsConnection()
+    }
+
     fun selectProvider(provider: LlmProvider) {
         repository.selectProvider(provider)
         _errorMessage.value = null
@@ -376,15 +532,35 @@ class CoachViewModel(application: Application) : AndroidViewModel(application) {
     fun updateUserName(name: String) = repository.updateUserName(name)
     fun updateNativeLanguage(lang: String) = repository.updateNativeLanguage(lang)
 
-    fun completeOnboarding(name: String, nativeLang: String, level: String) {
-        repository.completeOnboarding(name, nativeLang, level)
-        // Trigger a warm greeting from the Coach addressing the user by name
-        val greetingText = if (name.isNotBlank()) {
-            "Hello $name! Welcome to SpeakCoach. I am your English Language Coach. How are you feeling today?"
-        } else {
-            "Hello! Welcome to SpeakCoach. I am your English Language Coach. How are you feeling today?"
+    fun updateUserInterests(interests: String) {
+        viewModelScope.launch {
+            repository.saveUserInterests(interests)
         }
-        sendMessage(greetingText, isVoice = false)
+    }
+
+    fun clearUserMemory() {
+        viewModelScope.launch {
+            repository.clearUserMemory()
+        }
+    }
+
+    fun completeOnboarding(name: String, nativeLang: String, level: String, interests: String = "") {
+        repository.completeOnboarding(name, nativeLang, level)
+        viewModelScope.launch {
+            if (interests.isNotBlank()) {
+                repository.saveUserInterests(interests)
+            }
+            val userName = name.ifBlank { "there" }
+            val greetingText = if (interests.isNotBlank()) {
+                "Hello $userName! Welcome to SpeakCoach. I'm your English Language Coach. I noticed you are interested in $interests. Which of these topics would you like to talk about today, or shall we start with a casual chat?"
+            } else {
+                "Hello $userName! Welcome to SpeakCoach. I'm your English Language Coach. How are you feeling today? What topic would you like to chat about?"
+            }
+            val coachMsg = repository.saveCoachGreeting(greetingText)
+            if (repository.autoPlayTts.value) {
+                ttsManager.speak(coachMsg.text, coachMsg.id, uiState.value.selectedCoachGender)
+            }
+        }
     }
 
     fun updateAutoPlayTts(enabled: Boolean) = repository.updateAutoPlayTts(enabled)

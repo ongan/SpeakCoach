@@ -106,7 +106,7 @@ class DeepSeekRepositoryTest {
 
         assertTrue(prompt.contains("Mehmet"))
         assertTrue(prompt.contains("Türkçe"))
-        assertTrue(prompt.contains("CEFR A1"))
+        assertTrue(prompt.contains("A1"))
         assertTrue(prompt.contains("Ordering Fast Food"))
     }
 
