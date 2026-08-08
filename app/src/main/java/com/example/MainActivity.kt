@@ -62,9 +62,10 @@ fun MainAppShell(viewModel: CoachViewModel) {
     val uiState by viewModel.uiState.collectAsState()
 
     var showOnboardingDialog by remember { mutableStateOf(false) }
+    var showProfileSelectionDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(uiState.isOnboardingCompleted) {
-        if (!uiState.isOnboardingCompleted) {
+    LaunchedEffect(uiState.isOnboardingCompleted, uiState.profiles) {
+        if (!uiState.isOnboardingCompleted && uiState.profiles.isEmpty()) {
             showOnboardingDialog = true
         }
     }
@@ -73,6 +74,27 @@ fun MainAppShell(viewModel: CoachViewModel) {
         com.example.ui.components.OnboardingDialog(
             viewModel = viewModel,
             onDismiss = { showOnboardingDialog = false }
+        )
+    }
+
+    if (showProfileSelectionDialog) {
+        com.example.ui.components.ProfileSelectionDialog(
+            profiles = uiState.profiles,
+            activeProfileId = uiState.activeProfileId,
+            onSelectProfile = { profile ->
+                viewModel.selectProfile(profile)
+                showProfileSelectionDialog = false
+            },
+            onAddNewProfile = {
+                showProfileSelectionDialog = false
+                showOnboardingDialog = true
+            },
+            onDeleteProfile = { profile ->
+                viewModel.deleteProfile(profile)
+            },
+            onDismiss = if (uiState.profiles.isNotEmpty()) {
+                { showProfileSelectionDialog = false }
+            } else null
         )
     }
 
@@ -125,6 +147,9 @@ fun MainAppShell(viewModel: CoachViewModel) {
                     viewModel = viewModel,
                     onNavigateToSettings = {
                         navController.navigate(Screen.Settings.route)
+                    },
+                    onOpenProfileSelection = {
+                        showProfileSelectionDialog = true
                     }
                 )
             }

@@ -12,5 +12,6 @@ data class ChatMessageEntity(
     val feedback: String? = null, // Grammar error correction if coach message
     val timestamp: Long = System.currentTimeMillis(),
     val isVoice: Boolean = false,
-    val scenario: String? = null
+    val scenario: String? = null,
+    val profileId: Long = 1
 )

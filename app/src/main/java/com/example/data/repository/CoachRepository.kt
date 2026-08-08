@@ -12,10 +12,12 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.ChatMessageEntity
 import com.example.data.local.GrammarTipEntity
 import com.example.data.local.SavedWordEntity
+import com.example.data.local.UserProfileEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 
 class CoachRepository(context: Context) {
 
@@ -124,27 +126,137 @@ class CoachRepository(context: Context) {
     private val _activeScenarioSession = MutableStateFlow<com.example.data.model.ScenarioSessionState?>(null)
     val activeScenarioSession: StateFlow<com.example.data.model.ScenarioSessionState?> = _activeScenarioSession
 
-    val userMemory: Flow<com.example.data.local.UserMemoryEntity?> = dao.getUserMemoryFlow()
-    val allMessages: Flow<List<ChatMessageEntity>> = dao.getAllMessages()
+    private val _activeProfileId = MutableStateFlow<Long>(prefs.getLong("active_profile_id", 1L))
+    val activeProfileId: StateFlow<Long> = _activeProfileId
+
+    val allProfiles: Flow<List<UserProfileEntity>> = dao.getAllProfiles()
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val activeProfile: Flow<UserProfileEntity?> = _activeProfileId.flatMapLatest { id ->
+        dao.getProfileFlow(id)
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val userMemory: Flow<com.example.data.local.UserMemoryEntity?> = _activeProfileId.flatMapLatest { id ->
+        dao.getUserMemoryForProfileFlow(id)
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val allMessages: Flow<List<ChatMessageEntity>> = _activeProfileId.flatMapLatest { id ->
+        dao.getMessagesForProfile(id)
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val allGrammarTips: Flow<List<GrammarTipEntity>> = _activeProfileId.flatMapLatest { id ->
+        dao.getGrammarTipsForProfile(id)
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val allSavedWords: Flow<List<SavedWordEntity>> = _activeProfileId.flatMapLatest { id ->
+        dao.getSavedWordsForProfile(id)
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val userMessageCount: Flow<Int> = _activeProfileId.flatMapLatest { id ->
+        dao.getUserMessageCountForProfile(id)
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val grammarTipCount: Flow<Int> = _activeProfileId.flatMapLatest { id ->
+        dao.getGrammarTipCountForProfile(id)
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val savedWordCount: Flow<Int> = _activeProfileId.flatMapLatest { id ->
+        dao.getSavedWordCountForProfile(id)
+    }
+
+    suspend fun createNewProfile(
+        name: String,
+        nativeLang: String,
+        level: String,
+        interests: String,
+        autoPlayTts: Boolean
+    ): UserProfileEntity {
+        val newProfile = UserProfileEntity(
+            name = name,
+            nativeLanguage = nativeLang,
+            cefrLevel = level,
+            interests = interests,
+            autoPlayTts = autoPlayTts
+        )
+        val insertedId = dao.insertProfile(newProfile)
+        val createdProfile = newProfile.copy(id = insertedId)
+        
+        // Save initial memory for profile
+        dao.saveUserMemory(com.example.data.local.UserMemoryEntity(profileId = insertedId, interests = interests))
+        
+        // Activate new profile
+        setActiveProfile(createdProfile)
+        
+        // Add initial Coach greeting for this profile
+        val greetingText = "Hello $name! I'm Maya, your personal AI English Coach. I see your target level is $level and you like $interests. What would you like to practice today?"
+        dao.insertMessage(
+            ChatMessageEntity(
+                sender = "COACH",
+                text = greetingText,
+                profileId = insertedId
+            )
+        )
+        return createdProfile
+    }
+
+    suspend fun selectProfile(profile: UserProfileEntity) {
+        setActiveProfile(profile)
+    }
+
+    private fun setActiveProfile(profile: UserProfileEntity) {
+        prefs.edit().putLong("active_profile_id", profile.id).apply()
+        prefs.edit().putString("user_name", profile.name).apply()
+        prefs.edit().putString("native_language", profile.nativeLanguage).apply()
+        prefs.edit().putString("cefr_level", profile.cefrLevel).apply()
+        prefs.edit().putBoolean("auto_play_tts", profile.autoPlayTts).apply()
+        prefs.edit().putBoolean("is_onboarding_completed", true).apply()
+
+        _activeProfileId.value = profile.id
+        _userName.value = profile.name
+        _nativeLanguage.value = profile.nativeLanguage
+        _cefrLevel.value = profile.cefrLevel
+        _autoPlayTts.value = profile.autoPlayTts
+        _isOnboardingCompleted.value = true
+    }
+
+    suspend fun deleteProfile(profile: UserProfileEntity) {
+        dao.deleteProfile(profile.id)
+        dao.clearChatHistoryForProfile(profile.id)
+        
+        // If deleting current active profile, switch to first available profile or clear
+        if (_activeProfileId.value == profile.id) {
+            val allList = dao.getAllProfilesList()
+            if (allList.isNotEmpty()) {
+                selectProfile(allList.first())
+            } else {
+                prefs.edit().remove("active_profile_id").apply()
+                prefs.edit().putBoolean("is_onboarding_completed", false).apply()
+                _isOnboardingCompleted.value = false
+                _userName.value = ""
+            }
+        }
+    }
 
     suspend fun saveUserInterests(interests: String) {
-        val current = dao.getUserMemory() ?: com.example.data.local.UserMemoryEntity()
+        val current = dao.getUserMemoryForProfile(_activeProfileId.value) ?: com.example.data.local.UserMemoryEntity(profileId = _activeProfileId.value)
         dao.saveUserMemory(current.copy(interests = interests, lastUpdated = System.currentTimeMillis()))
     }
 
     suspend fun clearUserMemory() {
-        val current = dao.getUserMemory() ?: com.example.data.local.UserMemoryEntity()
+        val current = dao.getUserMemoryForProfile(_activeProfileId.value) ?: com.example.data.local.UserMemoryEntity(profileId = _activeProfileId.value)
         dao.saveUserMemory(current.copy(conversationSummary = "", learnedFacts = "", lastUpdated = System.currentTimeMillis()))
     }
 
     suspend fun saveUserMemory(memory: com.example.data.local.UserMemoryEntity) {
         dao.saveUserMemory(memory)
     }
-    val allGrammarTips: Flow<List<GrammarTipEntity>> = dao.getAllGrammarTips()
-    val allSavedWords: Flow<List<SavedWordEntity>> = dao.getAllSavedWords()
-    val userMessageCount: Flow<Int> = dao.getUserMessageCount()
-    val grammarTipCount: Flow<Int> = dao.getGrammarTipCount()
-    val savedWordCount: Flow<Int> = dao.getSavedWordCount()
 
     init {
         // Sync legacy api_key into CEREBRAS if empty
@@ -389,7 +501,8 @@ class CoachRepository(context: Context) {
             sender = "USER",
             text = text,
             isVoice = isVoice,
-            scenario = scenario
+            scenario = scenario,
+            profileId = _activeProfileId.value
         )
         val id = dao.insertMessage(entity)
         return entity.copy(id = id)
@@ -400,7 +513,8 @@ class CoachRepository(context: Context) {
             sender = "COACH",
             text = text,
             isVoice = false,
-            scenario = scenario
+            scenario = scenario,
+            profileId = _activeProfileId.value
         )
         val id = dao.insertMessage(entity)
         return entity.copy(id = id)
@@ -573,7 +687,8 @@ class CoachRepository(context: Context) {
         return GrammarTipEntity(
             originalSentence = original,
             correctedSentence = corrected,
-            explanation = explanation
+            explanation = explanation,
+            profileId = _activeProfileId.value
         )
     }
 
@@ -590,7 +705,7 @@ class CoachRepository(context: Context) {
     }
 
     suspend fun clearHistory() {
-        dao.clearChatHistory()
+        dao.clearChatHistoryForProfile(_activeProfileId.value)
     }
 
     suspend fun translateText(text: String, targetLanguage: String): String {
@@ -608,7 +723,8 @@ class CoachRepository(context: Context) {
             word = word.trim().lowercase(),
             meaning = meaning,
             exampleSentence = exampleSentence,
-            contextSentence = contextSentence
+            contextSentence = contextSentence,
+            profileId = _activeProfileId.value
         )
         return dao.insertSavedWord(entity)
     }

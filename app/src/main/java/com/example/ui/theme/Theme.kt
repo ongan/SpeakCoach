@@ -12,39 +12,43 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Cyan400,
-    onPrimary = Slate900,
-    primaryContainer = Cyan600,
+    primary = Indigo400,
+    onPrimary = Slate950,
+    primaryContainer = Indigo600,
     onPrimaryContainer = Color.White,
-    secondary = Amber500,
-    onSecondary = Slate900,
+    secondary = Pink500,
+    onSecondary = Color.White,
     secondaryContainer = Slate800,
-    onSecondaryContainer = Amber100,
+    onSecondaryContainer = Pink100,
     tertiary = Emerald500,
+    onTertiary = Color.White,
     background = Slate900,
     onBackground = Slate50,
     surface = Slate800,
     onSurface = Slate50,
     surfaceVariant = Slate700,
-    onSurfaceVariant = Slate100
+    onSurfaceVariant = Slate100,
+    outline = Slate600
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Cyan600,
+    primary = Indigo600,
     onPrimary = Color.White,
-    primaryContainer = Cyan100,
+    primaryContainer = Indigo100,
     onPrimaryContainer = Slate900,
     secondary = Amber500,
     onSecondary = Color.White,
     secondaryContainer = Amber100,
     onSecondaryContainer = Slate900,
     tertiary = Emerald500,
+    onTertiary = Color.White,
     background = Slate50,
     onBackground = Slate900,
     surface = Color.White,
     onSurface = Slate900,
     surfaceVariant = Slate100,
-    onSurfaceVariant = Slate800
+    onSurfaceVariant = Slate800,
+    outline = Slate200
 )
 
 @Composable
@@ -68,4 +72,3 @@ fun SpeakCoachTheme(
         content = content
     )
 }
-

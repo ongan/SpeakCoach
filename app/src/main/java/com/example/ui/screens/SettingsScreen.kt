@@ -99,6 +99,35 @@ fun SettingsScreen(viewModel: CoachViewModel) {
     var modelDropdownExpanded by remember { mutableStateOf(false) }
     var nativeLangDropdownExpanded by remember { mutableStateOf(false) }
 
+    var showProfileSelectionDialog by remember { mutableStateOf(false) }
+    var showOnboardingDialog by remember { mutableStateOf(false) }
+
+    if (showProfileSelectionDialog) {
+        com.example.ui.components.ProfileSelectionDialog(
+            profiles = uiState.profiles,
+            activeProfileId = uiState.activeProfileId,
+            onSelectProfile = { profile ->
+                viewModel.selectProfile(profile)
+                showProfileSelectionDialog = false
+            },
+            onAddNewProfile = {
+                showProfileSelectionDialog = false
+                showOnboardingDialog = true
+            },
+            onDeleteProfile = { profile ->
+                viewModel.deleteProfile(profile)
+            },
+            onDismiss = { showProfileSelectionDialog = false }
+        )
+    }
+
+    if (showOnboardingDialog) {
+        com.example.ui.components.OnboardingDialog(
+            viewModel = viewModel,
+            onDismiss = { showOnboardingDialog = false }
+        )
+    }
+
     var sliderSpeechRate by remember(uiState.speechRate) { mutableFloatStateOf(uiState.speechRate) }
 
     Column(
@@ -141,19 +170,31 @@ fun SettingsScreen(viewModel: CoachViewModel) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Kullanıcı Profili & Hitap Şekli",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Kullanıcı Profili",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Kayıtlı Profil Sayısı: ${uiState.profiles.size}",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Button(
+                        onClick = { showProfileSelectionDialog = true },
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("⇄ Profil Yönet / Değiştir", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))

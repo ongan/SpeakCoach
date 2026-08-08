@@ -99,13 +99,27 @@ fun OnboardingDialog(
 
     var nameInput by remember { mutableStateOf(uiState.userName) }
     var selectedNativeLang by remember { mutableStateOf(if (uiState.nativeLanguage.isBlank()) "Türkçe" else uiState.nativeLanguage) }
-    var selectedLevel by remember { mutableStateOf(if (uiState.cefrLevel.isBlank()) "CEFR B1" else uiState.cefrLevel) }
+    var selectedLevel by remember { mutableStateOf("") } // Starts EMPTY as requested
     var selectedInterests by remember { mutableStateOf(setOf<String>()) }
     var customInterestInput by remember { mutableStateOf("") }
+    var autoPlayTts by remember { mutableStateOf(uiState.autoPlayTts) }
+    var showPlacementTest by remember { mutableStateOf(false) }
+    var validationError by remember { mutableStateOf<String?>(null) }
 
     var langDropdownExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+
+    if (showPlacementTest) {
+        PlacementTestDialog(
+            onDismiss = { showPlacementTest = false },
+            onLevelDetermined = { determinedLevel ->
+                selectedLevel = determinedLevel
+                validationError = null
+                showPlacementTest = false
+            }
+        )
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -326,21 +340,66 @@ fun OnboardingDialog(
                                 Text("3. İngilizce Seviyeniz (CEFR Level)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                             }
 
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            // Interactive Placement Test Button
+                            androidx.compose.material3.OutlinedButton(
+                                onClick = { showPlacementTest = true },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary),
+                                border = androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "📝 Seviyemi Otomatik Belirle (Sınav Yap)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
                             Spacer(modifier = Modifier.height(8.dp))
 
+                            if (selectedLevel.isNotBlank()) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.padding(bottom = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "Seçilen Seviye: $selectedLevel",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+
                             CEFR_LEVEL_OPTIONS.forEach { (levelKey, levelDesc) ->
-                                val isSelected = selectedLevel.contains(levelKey.split(" ").last(), ignoreCase = true) || selectedLevel == levelKey
+                                val isSelected = selectedLevel.isNotBlank() && (selectedLevel.contains(levelKey.split(" ").last(), ignoreCase = true) || selectedLevel == levelKey)
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(8.dp))
-                                        .clickable { selectedLevel = levelKey }
+                                        .clickable {
+                                            selectedLevel = levelKey
+                                            validationError = null
+                                        }
                                         .padding(vertical = 4.dp, horizontal = 4.dp)
                                 ) {
                                     RadioButton(
                                         selected = isSelected,
-                                        onClick = { selectedLevel = levelKey }
+                                        onClick = {
+                                            selectedLevel = levelKey
+                                            validationError = null
+                                        }
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Column {
@@ -447,7 +506,6 @@ fun OnboardingDialog(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     // 5. Audio Output Preference (Sesli / Yazılı)
-                    var autoPlayTts by remember { mutableStateOf(uiState.autoPlayTts) }
                     Card(
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
@@ -493,10 +551,29 @@ fun OnboardingDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
+                if (validationError != null) {
+                    Text(
+                        text = validationError!!,
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                }
+
                 // Fixed Sticky Bottom Complete Onboarding Button
                 Button(
                     onClick = {
-                        val finalName = nameInput.ifBlank { "Öğrenci" }
+                        if (nameInput.isBlank()) {
+                            validationError = "Lütfen isminizi girin!"
+                            return@Button
+                        }
+                        if (selectedLevel.isBlank()) {
+                            validationError = "Lütfen bir seviye seçin veya Seviye Tespit Sınavı yapın!"
+                            return@Button
+                        }
+
+                        val finalName = nameInput.trim()
                         val englishInterests = selectedInterests.map { interest ->
                             when {
                                 interest.contains("Sinema") -> "Movies & TV Shows"
@@ -513,11 +590,13 @@ fun OnboardingDialog(
                         }
                         val customItems = customInterestInput.split(",").map { it.trim() }.filter { it.isNotBlank() }
                         val allInterests = (englishInterests + customItems).distinct().joinToString(", ")
-                        viewModel.completeOnboarding(
+                        
+                        viewModel.createNewProfileAndActivate(
                             name = finalName,
                             nativeLang = selectedNativeLang,
                             level = selectedLevel,
-                            interests = allInterests
+                            interests = allInterests,
+                            autoPlayTts = autoPlayTts
                         )
                         onDismiss()
                     },

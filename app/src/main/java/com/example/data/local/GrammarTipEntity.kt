@@ -11,5 +11,6 @@ data class GrammarTipEntity(
     val correctedSentence: String,
     val explanation: String,
     val timestamp: Long = System.currentTimeMillis(),
-    val isMastered: Boolean = false
+    val isMastered: Boolean = false,
+    val profileId: Long = 1
 )

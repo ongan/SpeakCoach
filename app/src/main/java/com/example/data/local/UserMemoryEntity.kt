@@ -6,9 +6,10 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "user_memory")
 data class UserMemoryEntity(
     @PrimaryKey
-    val id: Int = 1,
+    val profileId: Long = 1,
     val interests: String = "",
     val conversationSummary: String = "",
     val learnedFacts: String = "",
     val lastUpdated: Long = System.currentTimeMillis()
 )
+

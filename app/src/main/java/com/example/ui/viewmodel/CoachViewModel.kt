@@ -72,7 +72,9 @@ data class CoachUiState(
     val ttsTestResult: TtsTestResult? = null,
     val isTestingTts: Boolean = false,
     val useEdgeNeuralTts: Boolean = true,
-    val userMemory: com.example.data.local.UserMemoryEntity? = null
+    val userMemory: com.example.data.local.UserMemoryEntity? = null,
+    val profiles: List<com.example.data.local.UserProfileEntity> = emptyList(),
+    val activeProfileId: Long? = null
 )
 
 class CoachViewModel(application: Application) : AndroidViewModel(application) {
@@ -171,7 +173,9 @@ class CoachViewModel(application: Application) : AndroidViewModel(application) {
             _ttsTestResult,
             _isTestingTts,
             repository.useEdgeNeuralTts,
-            repository.userMemory
+            repository.userMemory,
+            repository.allProfiles,
+            repository.activeProfileId
         ) { args -> args }
     ) { group1, group2, group3 ->
         CoachUiState(
@@ -210,7 +214,9 @@ class CoachViewModel(application: Application) : AndroidViewModel(application) {
             ttsTestResult = group3[4] as TtsTestResult?,
             isTestingTts = group3[5] as Boolean,
             useEdgeNeuralTts = group3[6] as Boolean,
-            userMemory = group3[7] as com.example.data.local.UserMemoryEntity?
+            userMemory = group3[7] as com.example.data.local.UserMemoryEntity?,
+            profiles = group3[8] as List<com.example.data.local.UserProfileEntity>,
+            activeProfileId = group3[9] as Long?
         )
     }.stateIn(
         viewModelScope,
@@ -374,6 +380,36 @@ class CoachViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateUnlockAllStoryChapters(unlockAll: Boolean) {
         repository.updateUnlockAllStoryChapters(unlockAll)
+    }
+
+    fun selectProfile(profile: com.example.data.local.UserProfileEntity) {
+        viewModelScope.launch {
+            repository.selectProfile(profile)
+        }
+    }
+
+    fun createNewProfileAndActivate(
+        name: String,
+        nativeLang: String,
+        level: String,
+        interests: String,
+        autoPlayTts: Boolean
+    ) {
+        viewModelScope.launch {
+            repository.createNewProfile(
+                name = name,
+                nativeLang = nativeLang,
+                level = level,
+                interests = interests,
+                autoPlayTts = autoPlayTts
+            )
+        }
+    }
+
+    fun deleteProfile(profile: com.example.data.local.UserProfileEntity) {
+        viewModelScope.launch {
+            repository.deleteProfile(profile)
+        }
     }
 
     private fun getStarterPromptForScenario(scenario: String): String {

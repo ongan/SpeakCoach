@@ -11,5 +11,6 @@ data class SavedWordEntity(
     val exampleSentence: String,
     val contextSentence: String? = null,
     val isMastered: Boolean = false,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val profileId: Long = 1
 )

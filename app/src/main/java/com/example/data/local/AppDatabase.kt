@@ -6,8 +6,14 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [ChatMessageEntity::class, GrammarTipEntity::class, SavedWordEntity::class, UserMemoryEntity::class],
-    version = 3,
+    entities = [
+        ChatMessageEntity::class,
+        GrammarTipEntity::class,
+        SavedWordEntity::class,
+        UserMemoryEntity::class,
+        UserProfileEntity::class
+    ],
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

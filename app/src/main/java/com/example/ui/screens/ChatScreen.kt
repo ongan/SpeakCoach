@@ -98,7 +98,8 @@ import com.example.ui.viewmodel.CoachViewModel
 @Composable
 fun ChatScreen(
     viewModel: CoachViewModel,
-    onNavigateToSettings: () -> Unit = {}
+    onNavigateToSettings: () -> Unit = {},
+    onOpenProfileSelection: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isListening by viewModel.isListening.collectAsState()
@@ -151,23 +152,50 @@ fun ChatScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onOpenProfileSelection() }
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
+                            .background(MaterialTheme.colorScheme.primary),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(if (uiState.userName.isNotBlank()) uiState.userName.take(1).uppercase() else "👤", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(
+                            text = if (uiState.userName.isNotBlank()) uiState.userName.take(1).uppercase() else "👤",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = Color.White
+                        )
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
-                        Text(
-                            text = if (uiState.userName.isNotBlank()) "Merhaba, ${uiState.userName}" else "Hoş geldiniz",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = if (uiState.userName.isNotBlank()) uiState.userName else "Profil Seç",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = "⇄ Değiştir",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
                         Text(
                             text = "${uiState.cefrLevel} • Anadil: ${uiState.nativeLanguage}",
                             fontSize = 10.sp,
