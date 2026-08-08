@@ -11,9 +11,17 @@ import androidx.room.RoomDatabase
         GrammarTipEntity::class,
         SavedWordEntity::class,
         UserMemoryEntity::class,
-        UserProfileEntity::class
+        UserProfileEntity::class,
+        ScenarioSessionEntity::class,
+        ScenarioTurnEntity::class,
+        ScenarioGoalProgressEntity::class,
+        CorrectionEntity::class,
+        VocabularyEncounterEntity::class,
+        ReviewItemEntity::class,
+        DailyActivityEntity::class,
+        SkillSnapshotEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

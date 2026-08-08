@@ -39,6 +39,8 @@ import com.example.ui.screens.SettingsScreen
 import com.example.ui.theme.SpeakCoachTheme
 import com.example.ui.viewmodel.CoachViewModel
 
+import com.example.ui.screens.TodayScreen
+
 class MainActivity : ComponentActivity() {
 
     private val viewModel: CoachViewModel by viewModels()
@@ -99,8 +101,9 @@ fun MainAppShell(viewModel: CoachViewModel) {
     }
 
     val navigationItems = listOf(
-        Screen.Chat,
+        Screen.Today,
         Screen.Scenarios,
+        Screen.Chat,
         Screen.Notebook,
         Screen.Analytics,
         Screen.Settings
@@ -139,9 +142,20 @@ fun MainAppShell(viewModel: CoachViewModel) {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Screen.Chat.route,
+            startDestination = Screen.Today.route,
             modifier = Modifier.padding(innerPadding)
         ) {
+            composable(Screen.Today.route) {
+                TodayScreen(
+                    viewModel = viewModel,
+                    uiState = uiState,
+                    onNavigateToChat = { navController.navigate(Screen.Chat.route) },
+                    onNavigateToScenarios = { navController.navigate(Screen.Scenarios.route) },
+                    onNavigateToNotebook = { navController.navigate(Screen.Notebook.route) },
+                    onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
+                    onOpenProfileSelection = { showProfileSelectionDialog = true }
+                )
+            }
             composable(Screen.Chat.route) {
                 ChatScreen(
                     viewModel = viewModel,

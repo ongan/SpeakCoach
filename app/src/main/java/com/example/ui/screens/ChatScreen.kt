@@ -43,6 +43,9 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
 import com.example.ui.components.WordDetailDialog
+import com.example.ui.components.CoachAvatar
+import com.example.ui.components.AvatarState
+import com.example.ui.components.SessionSummaryDialog
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -118,6 +121,13 @@ fun ChatScreen(
     var textInput by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val context = LocalContext.current
+
+    if (uiState.activeScenarioSession?.isCompleted == true) {
+        SessionSummaryDialog(
+            sessionState = uiState.activeScenarioSession!!,
+            onDismiss = { viewModel.clearActiveScenario() }
+        )
+    }
 
     // Audio Permission Launcher
     val permissionLauncher = rememberLauncherForActivityResult(

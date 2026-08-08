@@ -59,6 +59,8 @@ data class CoachUiState(
     val kokoroMaleVoice: String = "am_michael",
     val kokoroModelDiskSizeMb: Float = 0f,
     val kokoroCacheSizeMb: Float = 0f,
+    val isKokoroModelReady: Boolean = false,
+    val selectedCoach: String = "MAYA",
     val speechRate: Float = 1.0f,
     val selectedCoachGender: com.example.data.model.CoachGender = com.example.data.model.CoachGender.MAYA,
     val showCoachAvatar: Boolean = true,
@@ -201,6 +203,8 @@ class CoachViewModel(application: Application) : AndroidViewModel(application) {
             maleEdgeVoice = group2[6] as String,
             kokoroModelDiskSizeMb = ttsManager.kokoroModelManager.getModelDiskSizeMb(),
             kokoroCacheSizeMb = ttsManager.kokoroCacheManager.getCacheSizeMb(),
+            isKokoroModelReady = ttsManager.kokoroModelManager.isModelReady(),
+            selectedCoach = if ((group2[8] as com.example.data.model.CoachGender) == com.example.data.model.CoachGender.LEO) "LEO" else "MAYA",
             speechRate = group2[7] as Float,
             selectedCoachGender = group2[8] as com.example.data.model.CoachGender,
             showCoachAvatar = group2[9] as Boolean,
@@ -337,6 +341,14 @@ class CoachViewModel(application: Application) : AndroidViewModel(application) {
             val starterPrompt = getStarterPromptForScenario(scenarioName)
             sendMessage("Let's practice $scenarioName! $starterPrompt", isVoice = false)
         }
+    }
+
+    fun startScenarioSession(definition: com.example.data.model.ScenarioDefinition) {
+        startScenario(definition)
+    }
+
+    fun startFreeTalkSession() {
+        clearActiveScenario()
     }
 
     fun startScenario(definition: com.example.data.model.ScenarioDefinition) {

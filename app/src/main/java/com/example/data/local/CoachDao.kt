@@ -103,5 +103,60 @@ interface CoachDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun saveUserMemory(memory: UserMemoryEntity)
+
+    // Scenario Session methods
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertScenarioSession(session: ScenarioSessionEntity)
+
+    @Update
+    suspend fun updateScenarioSession(session: ScenarioSessionEntity)
+
+    @Query("SELECT * FROM scenario_sessions WHERE sessionId = :sessionId")
+    suspend fun getScenarioSession(sessionId: String): ScenarioSessionEntity?
+
+    @Query("SELECT * FROM scenario_sessions WHERE profileId = :profileId AND status = 'IN_PROGRESS' ORDER BY startedAt DESC LIMIT 1")
+    suspend fun getActiveSessionForProfile(profileId: Long): ScenarioSessionEntity?
+
+    @Query("SELECT * FROM scenario_sessions WHERE profileId = :profileId ORDER BY startedAt DESC")
+    fun getScenarioSessionsForProfile(profileId: Long): Flow<List<ScenarioSessionEntity>>
+
+    // Scenario Turns & Goals
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertScenarioTurn(turn: ScenarioTurnEntity): Long
+
+    @Query("SELECT * FROM scenario_turns WHERE sessionId = :sessionId ORDER BY turnIndex ASC")
+    fun getTurnsForSession(sessionId: String): Flow<List<ScenarioTurnEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGoalProgress(progress: ScenarioGoalProgressEntity): Long
+
+    @Query("SELECT * FROM scenario_goal_progress WHERE sessionId = :sessionId")
+    fun getGoalProgressForSession(sessionId: String): Flow<List<ScenarioGoalProgressEntity>>
+
+    // Corrections & Review Queue
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCorrection(correction: CorrectionEntity): Long
+
+    @Query("SELECT * FROM corrections WHERE profileId = :profileId ORDER BY timestamp DESC")
+    fun getCorrectionsForProfile(profileId: Long): Flow<List<CorrectionEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReviewItem(item: ReviewItemEntity): Long
+
+    @Update
+    suspend fun updateReviewItem(item: ReviewItemEntity)
+
+    @Query("SELECT * FROM review_items WHERE profileId = :profileId AND isMastered = 0 AND nextReviewAt <= :now ORDER BY nextReviewAt ASC")
+    fun getDueReviewItemsForProfile(profileId: Long, now: Long = System.currentTimeMillis()): Flow<List<ReviewItemEntity>>
+
+    // Daily Activities & Skill Snapshots
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDailyActivity(activity: DailyActivityEntity): Long
+
+    @Query("SELECT * FROM daily_activities WHERE profileId = :profileId AND dateKey = :dateKey")
+    suspend fun getDailyActivity(profileId: Long, dateKey: String): DailyActivityEntity?
+
+    @Query("SELECT * FROM daily_activities WHERE profileId = :profileId ORDER BY dateKey DESC LIMIT 30")
+    fun getRecentActivitiesForProfile(profileId: Long): Flow<List<DailyActivityEntity>>
 }
 

@@ -42,6 +42,22 @@ enum class CoachGender(
     )
 }
 
+data class ScenarioGoal(
+    val id: String,
+    val description: String,
+    val successCriteria: String = "",
+    val required: Boolean = true,
+    val weight: Int = 1
+)
+
+data class ScenarioBranch(
+    val id: String,
+    val stage: ScenarioStage = ScenarioStage.COMPLICATION,
+    val triggerCondition: String,
+    val complicationDescription: String,
+    val allowedOnce: Boolean = true
+)
+
 data class ScenarioDefinition(
     val id: String,
     val chapterId: String? = null,
@@ -51,16 +67,34 @@ data class ScenarioDefinition(
     val cefrLevel: String,
     val location: String,
     val aiRole: String,
+    val aiPersona: String = "Warm and encouraging English coach",
     val userRole: String,
     val mainGoal: String,
-    val subGoals: List<String>,
+    val goals: List<ScenarioGoal> = emptyList(),
+    val subGoals: List<String> = emptyList(), // Backwards compatibility helper
     val targetVocabulary: List<String>,
     val grammarFocus: String,
-    val variableOptions: Map<String, List<String>>,
+    val variableOptions: Map<String, List<String>> = emptyMap(),
+    val openerPool: List<String> = emptyList(),
+    val branchPool: List<ScenarioBranch> = emptyList(),
+    val successConditions: List<String> = emptyList(),
     val minTurns: Int = 4,
     val maxTurns: Int = 10,
+    val closingRules: String = "Wrap up gracefully when main goals are completed or max turns reached.",
     val starterPrompt: String
-)
+) {
+    fun getResolvedGoals(): List<ScenarioGoal> {
+        if (goals.isNotEmpty()) return goals
+        return subGoals.mapIndexed { index, sub ->
+            ScenarioGoal(
+                id = "${id}_goal_${index + 1}",
+                description = sub,
+                successCriteria = sub,
+                required = true
+            )
+        }
+    }
+}
 
 data class ScenarioSessionState(
     val sessionId: String,
