@@ -24,6 +24,16 @@ import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
+data class KokoroModelValidation(
+    val isReady: Boolean,
+    val message: String? = null,
+    val modelFile: File? = null,
+    val voicesFile: File? = null,
+    val tokensFile: File? = null,
+    val lexiconUsFile: File? = null,
+    val espeakDataDir: File? = null
+)
+
 class KokoroModelManager(private val context: Context) {
 
     private val client = OkHttpClient.Builder()
@@ -51,17 +61,50 @@ class KokoroModelManager(private val context: Context) {
     }
 
     fun isModelReady(): Boolean {
-        if (!modelDir.exists() || !modelDir.isDirectory) return false
-        
-        // Find if model file exists (e.g. model.onnx or kokoro-multi-lang-v1_1.int8.onnx)
-        val files = modelDir.walkTopDown().toList()
-        val hasOnnx = files.any { it.extension == "onnx" }
-        val hasVoices = files.any { it.name == "voices.bin" }
-        val hasTokens = files.any { it.name == "tokens.txt" }
-        val hasLexicon = files.any { it.name == "lexicon-us-en.txt" }
-        val hasEspeakData = files.any { it.name == "espeak-ng-data" && it.isDirectory }
+        return validateModelDirectory().isReady
+    }
 
-        return hasOnnx && hasVoices && hasTokens && hasLexicon && hasEspeakData
+    fun validateModelDirectory(rootDir: File = modelDir): KokoroModelValidation {
+        if (!rootDir.exists() || !rootDir.isDirectory) {
+            return KokoroModelValidation(false, "Kokoro model klasörü bulunamadı.")
+        }
+
+        val files = rootDir.walkTopDown().toList()
+        val modelFile = findBestOnnxFile(files)
+            ?: return KokoroModelValidation(false, "Kokoro ONNX model dosyası bulunamadı.")
+        val voicesFile = files.firstOrNull { it.name == "voices.bin" && it.isFile }
+            ?: return KokoroModelValidation(false, "Kokoro voices.bin dosyası bulunamadı.")
+        val tokensFile = files.firstOrNull { it.name == "tokens.txt" && it.isFile }
+            ?: return KokoroModelValidation(false, "Kokoro tokens.txt dosyası bulunamadı.")
+        val lexiconUsFile = files.firstOrNull { it.name == "lexicon-us-en.txt" && it.isFile }
+            ?: return KokoroModelValidation(false, "Kokoro lexicon-us-en.txt dosyası bulunamadı.")
+        val espeakDataDir = files.firstOrNull { it.name == "espeak-ng-data" && it.isDirectory }
+            ?: return KokoroModelValidation(false, "Kokoro espeak-ng-data klasörü bulunamadı.")
+
+        if (modelFile.length() < KokoroModelManifest.MIN_ONNX_BYTES) {
+            return KokoroModelValidation(false, "Kokoro ONNX modeli eksik veya yarım inmiş görünüyor.")
+        }
+        if (voicesFile.length() < KokoroModelManifest.MIN_VOICES_BYTES) {
+            return KokoroModelValidation(false, "Kokoro voices.bin dosyası eksik veya bozuk görünüyor.")
+        }
+        if (tokensFile.length() < KokoroModelManifest.MIN_TOKENS_BYTES) {
+            return KokoroModelValidation(false, "Kokoro tokens.txt dosyası eksik veya bozuk görünüyor.")
+        }
+        if (lexiconUsFile.length() < KokoroModelManifest.MIN_LEXICON_BYTES) {
+            return KokoroModelValidation(false, "Kokoro lexicon-us-en.txt dosyası eksik veya bozuk görünüyor.")
+        }
+        if ((espeakDataDir.listFiles()?.size ?: 0) == 0) {
+            return KokoroModelValidation(false, "Kokoro espeak-ng-data klasörü boş görünüyor.")
+        }
+
+        return KokoroModelValidation(
+            isReady = true,
+            modelFile = modelFile,
+            voicesFile = voicesFile,
+            tokensFile = tokensFile,
+            lexiconUsFile = lexiconUsFile,
+            espeakDataDir = espeakDataDir
+        )
     }
 
     fun checkModelStatus(): TtsStatus {
@@ -150,6 +193,22 @@ class KokoroModelManager(private val context: Context) {
                 extractTargetDir.mkdirs()
 
                 extractTarBz2(archivePartFile, extractTargetDir)
+
+                val extractedRootContent = extractTargetDir.listFiles()
+                val extractedSourceDir = if (extractedRootContent?.size == 1 && extractedRootContent[0].isDirectory) {
+                    extractedRootContent[0]
+                } else {
+                    extractTargetDir
+                }
+                val validation = validateModelDirectory(extractedSourceDir)
+                if (!validation.isReady) {
+                    archivePartFile.delete()
+                    extractTargetDir.deleteRecursively()
+                    val msg = validation.message ?: "Model dosyası eksik veya bozuk"
+                    _status.value = TtsStatus.Error(com.example.audio.TtsProvider.KOKORO_OFFLINE, msg)
+                    onComplete(false, msg)
+                    return@launch
+                }
 
                 // Verify essential files in extracted content
                 val extractedFiles = extractTargetDir.walkTopDown().toList()
@@ -278,12 +337,23 @@ class KokoroModelManager(private val context: Context) {
     }
 
     fun findModelFile(extension: String): File? {
-        if (!isModelReady()) return null
+        val validation = validateModelDirectory()
+        if (!validation.isReady) return null
+        if (extension == "onnx") return validation.modelFile
         return modelDir.walkTopDown().firstOrNull { it.extension == extension || it.name == extension }
     }
 
     fun findFileByName(filename: String): File? {
-        if (!isModelReady()) return null
+        if (!validateModelDirectory().isReady) return null
         return modelDir.walkTopDown().firstOrNull { it.name == filename }
+    }
+
+    private fun findBestOnnxFile(files: List<File>): File? {
+        val onnxFiles = files.filter { it.isFile && it.extension == "onnx" }
+        if (onnxFiles.isEmpty()) return null
+        return onnxFiles.sortedWith(
+            compareByDescending<File> { it.name.contains("int8", ignoreCase = true) }
+                .thenByDescending { it.length() }
+        ).first()
     }
 }

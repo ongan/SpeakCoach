@@ -2,39 +2,57 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Indigo & Violet Primary Palette
-val Indigo600 = Color(0xFF4F46E5)
-val Indigo500 = Color(0xFF6366F1)
-val Indigo400 = Color(0xFF818CF8)
-val Indigo100 = Color(0xFFE0E7FF)
-val Indigo50 = Color(0xFFEEF2FF)
+// Referans HTML / ekran görüntülerindeki ana SpeakCoach tasarım paleti.
+val DeepNavy = Color(0xFF041627)
+val DeepNavyContainer = Color(0xFF1A2B3C)
+val ActiveCyan = Color(0xFF00E3FD)
+val ActiveCyanContainer = Color(0xFF9CF0FF)
+val CoachAmber = Color(0xFFFFBA38)
+val CoachAmberContainer = Color(0xFFFFF8E7)
+val SuccessEmerald = Color(0xFF10B981)
+val ErrorSoftRed = Color(0xFFBA1A1A)
 
-// Vibrant Pink / Violet Accent
-val Pink500 = Color(0xFFEC4899)
-val Pink100 = Color(0xFFFCE7F3)
+val SoftBackground = Color(0xFFF8F9FF)
+val SurfaceLowest = Color(0xFFFFFFFF)
+val SurfaceLow = Color(0xFFEFF4FF)
+val SurfaceContainer = Color(0xFFE5EEFF)
+val SurfaceHigh = Color(0xFFDCE9FF)
+val SurfaceHighest = Color(0xFFD3E4FE)
 
-// Amber / Warm Coral
-val Amber500 = Color(0xFFF59E0B)
-val Amber100 = Color(0xFFFEF3C7)
+val OnSurfacePrimary = Color(0xFF0B1C30)
+val OnSurfaceVariant = Color(0xFF44474C)
+val OutlineVariant = Color(0xFFC4C6CD)
+val OutlineColor = Color(0xFF74777D)
 
-// Emerald Mint Green
-val Emerald500 = Color(0xFF10B981)
-val Emerald100 = Color(0xFFD1FAE5)
+// Mevcut ekranların importlarını kırmamak için eski renk adları korunuyor.
+// Değerleri ana tasarım paletine bağlandı.
+val Indigo600 = DeepNavy
+val Indigo500 = DeepNavyContainer
+val Indigo400 = Color(0xFFB7C8DE)
+val Indigo100 = Color(0xFFD2E4FB)
+val Indigo50 = SoftBackground
 
-// Sky Blue Accent
-val Cyan600 = Color(0xFF0284C7)
-val Cyan400 = Color(0xFF38BDF8)
-val Cyan100 = Color(0xFFE0F2FE)
+val Pink500 = Color(0xFF006875)
+val Pink100 = Color(0xFFFFE8E8)
 
-// Rose Alert / Warning Colors
-val Rose500 = Color(0xFFF43F5E)
-val Rose100 = Color(0xFFFFE4E6)
+val Amber500 = CoachAmber
+val Amber100 = CoachAmberContainer
 
-val Slate950 = Color(0xFF020617)
-val Slate900 = Color(0xFF0F172A)
-val Slate800 = Color(0xFF1E293B)
-val Slate700 = Color(0xFF334155)
-val Slate600 = Color(0xFF475569)
-val Slate200 = Color(0xFFE2E8F0)
-val Slate100 = Color(0xFFF1F5F9)
-val Slate50 = Color(0xFFF8FAFC)
+val Emerald500 = SuccessEmerald
+val Emerald100 = Color(0xFFE6EEDC)
+
+val Cyan600 = Color(0xFF006875)
+val Cyan400 = ActiveCyan
+val Cyan100 = SurfaceContainer
+
+val Rose500 = ErrorSoftRed
+val Rose100 = Color(0xFFFFE4E1)
+
+val Slate950 = Color(0xFF001F24)
+val Slate900 = DeepNavy
+val Slate800 = DeepNavyContainer
+val Slate700 = Color(0xFF213145)
+val Slate600 = OnSurfaceVariant
+val Slate200 = OutlineVariant
+val Slate100 = SurfaceLow
+val Slate50 = SoftBackground

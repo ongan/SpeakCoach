@@ -15,10 +15,10 @@ sealed class Screen(
     val icon: ImageVector,
     val testTag: String
 ) {
-    object Today : Screen("today", "Günün Planı", Icons.Filled.Home, "nav_today")
-    object Scenarios : Screen("scenarios", "Pratik", Icons.Filled.CompassCalibration, "nav_scenarios")
-    object Chat : Screen("chat", "Sohbet", Icons.AutoMirrored.Filled.Chat, "nav_chat")
-    object Notebook : Screen("notebook", "Defterim", Icons.Filled.Book, "nav_notebook")
-    object Analytics : Screen("analytics", "İlerleme", Icons.Filled.Insights, "nav_analytics")
-    object Settings : Screen("settings", "Ayarlar", Icons.Filled.Settings, "nav_settings")
+    object Today : Screen("today", "Today", Icons.Filled.Home, "nav_today")
+    object Scenarios : Screen("scenarios", "Practice", Icons.Filled.CompassCalibration, "nav_scenarios")
+    object Chat : Screen("chat", "Coach", Icons.AutoMirrored.Filled.Chat, "nav_chat")
+    object Notebook : Screen("notebook", "Notebook", Icons.Filled.Book, "nav_notebook")
+    object Analytics : Screen("analytics", "Progress", Icons.Filled.Insights, "nav_analytics")
+    object Settings : Screen("settings", "Settings", Icons.Filled.Settings, "nav_settings")
 }

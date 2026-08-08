@@ -261,6 +261,18 @@ class TextToSpeechManager(private val context: Context) : TextToSpeech.OnInitLis
                 _currentPlayingMessageId.value = null
                 _ttsStatus.value = TtsStatus.Idle
                 throw e
+            } catch (e: OutOfMemoryError) {
+                val errMsg = "Kokoro için cihaz belleği yetersiz kaldı."
+                _isPlaying.value = false
+                _currentPlayingMessageId.value = null
+                _ttsStatus.value = TtsStatus.Error(TtsProvider.KOKORO_OFFLINE, errMsg)
+                handleFallback(TtsProvider.KOKORO_OFFLINE, errMsg, text, messageId, targetGender)
+            } catch (e: LinkageError) {
+                val errMsg = e.message ?: "Kokoro native motoru yüklenemedi."
+                _isPlaying.value = false
+                _currentPlayingMessageId.value = null
+                _ttsStatus.value = TtsStatus.Error(TtsProvider.KOKORO_OFFLINE, errMsg)
+                handleFallback(TtsProvider.KOKORO_OFFLINE, errMsg, text, messageId, targetGender)
             } catch (e: Exception) {
                 val errMsg = e.message ?: "Kokoro hatası"
                 _isPlaying.value = false

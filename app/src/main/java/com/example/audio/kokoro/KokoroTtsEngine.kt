@@ -54,17 +54,18 @@ class KokoroTtsEngine(
                 return@withLock Result.success(Unit)
             }
 
-            if (!modelManager.isModelReady()) {
+            val validation = modelManager.validateModelDirectory()
+            if (!validation.isReady) {
                 _status.value = TtsStatus.ModelNotDownloaded
                 return@withLock Result.failure(Exception("Kokoro ses modeli indirilmemiş."))
             }
 
             _status.value = TtsStatus.Initializing
             try {
-                val modelFile = modelManager.findModelFile("onnx")
-                val voicesFile = modelManager.findFileByName("voices.bin")
-                val tokensFile = modelManager.findFileByName("tokens.txt")
-                val dataDir = modelManager.findFileByName("espeak-ng-data")
+                val modelFile = validation.modelFile
+                val voicesFile = validation.voicesFile
+                val tokensFile = validation.tokensFile
+                val dataDir = validation.espeakDataDir
                 val lexiconUs = modelManager.findFileByName("lexicon-us-en.txt")
                 val lexiconZh = modelManager.findFileByName("lexicon-zh.txt")
 
@@ -81,7 +82,7 @@ class KokoroTtsEngine(
                 val ruleFsts = listOf("phone-zh.fst", "date-zh.fst", "number-zh.fst")
                     .mapNotNull { modelManager.findFileByName(it) }
                     .joinToString(",") { it.absolutePath }
-                val threadCount = (Runtime.getRuntime().availableProcessors() - 1).coerceIn(2, 4)
+                val threadCount = (Runtime.getRuntime().availableProcessors() - 1).coerceIn(1, 2)
 
                 val config = OfflineTtsConfig(
                     model = OfflineTtsModelConfig(
@@ -127,18 +128,32 @@ class KokoroTtsEngine(
                     "Kokoro initialized: ${modelFile.name}, sampleRate=$sampleRate, speakers=$speakerCount, threads=$threadCount"
                 )
                 Result.success(Unit)
+            } catch (e: OutOfMemoryError) {
+                releaseFailedEngine()
+                val msg = "Kokoro modeli için cihaz belleği yetersiz kaldı. Modeli silip tekrar indirin veya yedek TTS motoru kullanın."
+                _status.value = TtsStatus.Error(TtsProvider.KOKORO_OFFLINE, msg)
+                Log.e("KokoroTtsEngine", msg, e)
+                Result.failure(IllegalStateException(msg, e))
             } catch (e: UnsatisfiedLinkError) {
+                releaseFailedEngine()
                 isEngineInitialized = false
                 val msg = "Kokoro yerel kütüphanesi yüklenemedi: ${e.message ?: "JNI bulunamadı"}"
                 _status.value = TtsStatus.Error(TtsProvider.KOKORO_OFFLINE, msg)
                 Log.e("KokoroTtsEngine", msg, e)
                 Result.failure(IllegalStateException(msg, e))
             } catch (e: Exception) {
+                releaseFailedEngine()
                 isEngineInitialized = false
                 val msg = e.message ?: "Kokoro modeli başlatılamadı."
                 _status.value = TtsStatus.Error(TtsProvider.KOKORO_OFFLINE, msg)
                 Log.e("KokoroTtsEngine", msg, e)
                 Result.failure(Exception(msg, e))
+            } catch (e: LinkageError) {
+                releaseFailedEngine()
+                val msg = "Kokoro native motoru yüklenemedi: ${e.message ?: "native bağlantı hatası"}"
+                _status.value = TtsStatus.Error(TtsProvider.KOKORO_OFFLINE, msg)
+                Log.e("KokoroTtsEngine", msg, e)
+                Result.failure(IllegalStateException(msg, e))
             }
         }
     }
@@ -229,11 +244,23 @@ class KokoroTtsEngine(
             } catch (e: CancellationException) {
                 _status.value = TtsStatus.Idle
                 throw e
+            } catch (e: OutOfMemoryError) {
+                releaseFailedEngine()
+                val msg = "Kokoro ses üretirken cihaz belleği yetersiz kaldı."
+                Log.e("KokoroTtsEngine", msg, e)
+                _status.value = TtsStatus.Error(TtsProvider.KOKORO_OFFLINE, msg)
+                Result.failure(IllegalStateException(msg, e))
             } catch (e: Exception) {
                 Log.e("KokoroTtsEngine", "Synthesis error: ${e.message}", e)
                 val msg = e.message ?: "Ses üretimi sırasında bir hata oluştu."
                 _status.value = TtsStatus.Error(TtsProvider.KOKORO_OFFLINE, msg)
                 Result.failure(Exception(msg))
+            } catch (e: LinkageError) {
+                releaseFailedEngine()
+                val msg = "Kokoro native sentez hatası: ${e.message ?: "native hata"}"
+                Log.e("KokoroTtsEngine", msg, e)
+                _status.value = TtsStatus.Error(TtsProvider.KOKORO_OFFLINE, msg)
+                Result.failure(IllegalStateException(msg, e))
             }
         }
     }
@@ -256,10 +283,45 @@ class KokoroTtsEngine(
         _status.value = if (modelManager.isModelReady()) TtsStatus.Idle else TtsStatus.ModelNotDownloaded
     }
 
+    private fun releaseFailedEngine() {
+        synchronized(nativeLock) {
+            try {
+                offlineTts?.release()
+            } catch (e: Throwable) {
+                Log.e("KokoroTtsEngine", "Error releasing failed Kokoro engine: ${e.message}")
+            } finally {
+                offlineTts = null
+                isEngineInitialized = false
+            }
+        }
+    }
+
     private fun splitTextIntoSentences(text: String): List<String> {
         val delimiters = Regex("(?<=[.!?;\n])\\s+")
         val parts = text.split(delimiters)
-        return if (parts.isNotEmpty()) parts else listOf(text)
+        val sentenceParts = if (parts.isNotEmpty()) parts else listOf(text)
+        return sentenceParts.flatMap { splitLongSentence(it.trim()) }.filter { it.isNotBlank() }
+    }
+
+    private fun splitLongSentence(sentence: String, maxChars: Int = 220): List<String> {
+        if (sentence.length <= maxChars) return listOf(sentence)
+
+        val chunks = mutableListOf<String>()
+        var remaining = sentence
+        while (remaining.length > maxChars) {
+            val window = remaining.take(maxChars)
+            val splitAt = listOf(
+                window.lastIndexOf(", "),
+                window.lastIndexOf("; "),
+                window.lastIndexOf(": "),
+                window.lastIndexOf(" ")
+            ).filter { it > maxChars / 2 }.maxOrNull() ?: maxChars
+
+            chunks += remaining.take(splitAt).trim()
+            remaining = remaining.drop(splitAt).trim()
+        }
+        if (remaining.isNotBlank()) chunks += remaining
+        return chunks
     }
 
     private suspend fun generateSpeechSamples(

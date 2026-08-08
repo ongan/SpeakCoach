@@ -16,6 +16,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -25,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -36,6 +38,10 @@ import com.example.ui.screens.ChatScreen
 import com.example.ui.screens.NotebookScreen
 import com.example.ui.screens.ScenariosScreen
 import com.example.ui.screens.SettingsScreen
+import com.example.ui.theme.ActiveCyan
+import com.example.ui.theme.DeepNavy
+import com.example.ui.theme.OnSurfaceVariant
+import com.example.ui.theme.SurfaceLowest
 import com.example.ui.theme.SpeakCoachTheme
 import com.example.ui.viewmodel.CoachViewModel
 
@@ -113,7 +119,9 @@ fun MainAppShell(viewModel: CoachViewModel) {
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
             NavigationBar(
-                modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars),
+                containerColor = SurfaceLowest,
+                tonalElevation = 0.dp
             ) {
                 navigationItems.forEach { screen ->
                     val selected = currentRoute == screen.route
@@ -131,9 +139,21 @@ fun MainAppShell(viewModel: CoachViewModel) {
                             }
                         },
                         icon = {
-                            Icon(imageVector = screen.icon, contentDescription = screen.title)
+                            Icon(
+                                imageVector = screen.icon,
+                                contentDescription = screen.title
+                            )
                         },
                         label = { Text(screen.title) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = DeepNavy,
+                            selectedTextColor = DeepNavy,
+                            indicatorColor = ActiveCyan.copy(alpha = 0.85f),
+                            unselectedIconColor = OnSurfaceVariant,
+                            unselectedTextColor = OnSurfaceVariant,
+                            disabledIconColor = Color.Gray,
+                            disabledTextColor = Color.Gray
+                        ),
                         modifier = Modifier.testTag(screen.testTag)
                     )
                 }

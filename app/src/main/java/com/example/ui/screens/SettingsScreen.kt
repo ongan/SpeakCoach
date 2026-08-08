@@ -570,7 +570,7 @@ fun SettingsScreen(viewModel: CoachViewModel) {
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = "🧠 Kokoro v1.1 Neural Model",
+                                            text = "Kokoro v1.0 int8 Offline Model",
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 13.sp,
                                             color = MaterialTheme.colorScheme.onSurface
@@ -591,7 +591,7 @@ fun SettingsScreen(viewModel: CoachViewModel) {
 
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Text(
-                                        text = "Model: kokoro-multi-lang-v1_1 int8 ONNX (Yaklaşık 85 MB tar.bz2)",
+                                        text = "Model: kokoro-int8-multi-lang-v1_0 ONNX (yaklaşık 100 MB tar.bz2)",
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
