@@ -1,6 +1,7 @@
 package com.example
 
 import com.example.data.api.ChatMessageItem
+import com.example.data.api.CoachJsonResponse
 import com.example.data.api.DeepSeekRepository
 import com.example.data.api.LlmProvider
 import org.junit.Assert.assertEquals
@@ -129,6 +130,26 @@ class DeepSeekRepositoryTest {
         assertFalse(cleaned.contains("```"))
         assertTrue(cleaned.startsWith("{"))
         assertTrue(cleaned.endsWith("}"))
+    }
+
+    @Test
+    fun testMalformedJsonEnvelope_RecoversCompletedResponseField() {
+        val repository = DeepSeekRepository()
+        val parser = DeepSeekRepository::class.java.getDeclaredMethod(
+            "parseCoachResponse",
+            String::class.java,
+            String::class.java
+        ).apply { isAccessible = true }
+
+        val malformed = """
+            {
+              "response": "Hello Alex! Nice to meet you.",
+              "
+        """.trimIndent()
+
+        val parsed = parser.invoke(repository, malformed, "Google Gemini") as CoachJsonResponse
+        assertEquals("Hello Alex! Nice to meet you.", parsed.response)
+        assertFalse(parsed.response.contains("\"response\""))
     }
 
     @Test

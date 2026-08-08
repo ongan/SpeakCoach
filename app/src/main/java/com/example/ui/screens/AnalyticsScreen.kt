@@ -221,7 +221,7 @@ fun AnalyticsScreen(viewModel: CoachViewModel) {
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Focus on speaking full sentences without worrying about perfection. The DeepSeek AI Coach will silently catch and explain errors while maintaining your natural conversation flow!",
+                        text = "Focus on speaking full sentences without worrying about perfection. Your AI coach will quietly catch and explain errors while keeping the conversation natural.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

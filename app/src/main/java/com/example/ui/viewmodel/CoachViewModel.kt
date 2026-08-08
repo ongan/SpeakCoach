@@ -272,7 +272,11 @@ class CoachViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun sendMessage(userText: String, isVoice: Boolean = false) {
+    fun sendMessage(
+        userText: String,
+        isVoice: Boolean = false,
+        persistUserMessage: Boolean = true
+    ) {
         val trimmed = userText.trim()
         if (trimmed.isEmpty() || _isLoadingAi.value) return
 
@@ -287,7 +291,8 @@ class CoachViewModel(application: Application) : AndroidViewModel(application) {
                     userInput = trimmed,
                     isVoice = isVoice,
                     activeScenario = _activeScenario.value,
-                    history = currentHistory
+                    history = currentHistory,
+                    persistUserMessage = persistUserMessage
                 )
 
                 if (repository.autoPlayTts.value) {
@@ -339,7 +344,11 @@ class CoachViewModel(application: Application) : AndroidViewModel(application) {
             repository.endCurrentScenarioSession()
         } else {
             val starterPrompt = getStarterPromptForScenario(scenarioName)
-            sendMessage("Let's practice $scenarioName! $starterPrompt", isVoice = false)
+            sendMessage(
+                "Let's practice $scenarioName! $starterPrompt",
+                isVoice = false,
+                persistUserMessage = false
+            )
         }
     }
 
@@ -356,7 +365,7 @@ class CoachViewModel(application: Application) : AndroidViewModel(application) {
         _activeScenario.value = definition.title
         val varsDesc = session.sessionVariables.entries.joinToString(", ") { "${it.key}: ${it.value}" }
         val prompt = "Let's start the scenario '${definition.title}'. Context details: Location: ${definition.location}, My Role: ${definition.userRole}, Your Role: ${definition.aiRole}. Dynamic variables: [$varsDesc]. Please greet me in character!"
-        sendMessage(prompt, isVoice = false)
+        sendMessage(prompt, isVoice = false, persistUserMessage = false)
     }
 
     fun startStoryScene(scene: com.example.data.model.StoryScene) {
@@ -366,14 +375,14 @@ class CoachViewModel(application: Application) : AndroidViewModel(application) {
         repository.markSceneCompleted(scene.id)
         val varsDesc = session.sessionVariables.entries.joinToString(", ") { "${it.key}: ${it.value}" }
         val prompt = "Let me start Story Scene '${title}'. Context: ${scene.description}, Your Role: ${scene.aiRole}. Dynamic variables: [$varsDesc]. Please initiate our conversation!"
-        sendMessage(prompt, isVoice = false)
+        sendMessage(prompt, isVoice = false, persistUserMessage = false)
     }
 
     fun startExtraModule(module: com.example.data.model.ExtraStudyModule) {
         _activeScenario.value = module.title
         repository.endCurrentScenarioSession()
         val prompt = "Let's work on the extra study module: '${module.title}' (${module.subtitle}). Focus area: ${module.description}. Please begin with a helpful introduction and a practical question!"
-        sendMessage(prompt, isVoice = false)
+        sendMessage(prompt, isVoice = false, persistUserMessage = false)
     }
 
     fun clearActiveScenario() {

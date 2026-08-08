@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import com.example.audio.TtsEngineMode
 import com.example.data.api.ChatMessageItem
 import com.example.data.api.CoachJsonResponse
+import com.example.data.api.CoachResponseSanitizer
 import com.example.data.api.DeepSeekRepository
 import com.example.data.api.LlmProvider
 import com.example.data.api.WordDefinition
@@ -67,7 +68,15 @@ class CoachRepository(context: Context) {
     val autoPlayTts: StateFlow<Boolean> = _autoPlayTts
 
     private val savedEngineModeStr = prefs.getString("tts_engine_mode", TtsEngineMode.KOKORO_OFFLINE.name) ?: TtsEngineMode.KOKORO_OFFLINE.name
-    private val initialEngineMode = try { TtsEngineMode.valueOf(savedEngineModeStr) } catch (e: Exception) { TtsEngineMode.KOKORO_OFFLINE }
+    private val initialEngineMode = try {
+        TtsEngineMode.valueOf(savedEngineModeStr)
+    } catch (e: Exception) {
+        TtsEngineMode.KOKORO_OFFLINE
+    }.let { savedMode ->
+        // Edge Consumer is temporarily hidden because the unofficial endpoint
+        // rejects direct Android clients. Migrate existing selections safely.
+        if (savedMode == TtsEngineMode.EDGE_EXPERIMENTAL) TtsEngineMode.KOKORO_OFFLINE else savedMode
+    }
     private val _ttsEngineMode = MutableStateFlow(initialEngineMode)
     val ttsEngineMode: StateFlow<TtsEngineMode> = _ttsEngineMode
 
@@ -263,6 +272,9 @@ class CoachRepository(context: Context) {
         val legacyKey = prefs.getString("api_key", "") ?: ""
         if (legacyKey.isNotBlank() && prefs.getString(getPrefKeyForApiKey(LlmProvider.CEREBRAS), "").isNullOrBlank()) {
             prefs.edit().putString(getPrefKeyForApiKey(LlmProvider.CEREBRAS), legacyKey).apply()
+        }
+        if (savedEngineModeStr != initialEngineMode.name) {
+            prefs.edit().putString("tts_engine_mode", initialEngineMode.name).apply()
         }
     }
 
@@ -524,9 +536,12 @@ class CoachRepository(context: Context) {
         userInput: String,
         isVoice: Boolean,
         activeScenario: String?,
-        history: List<ChatMessageEntity>
+        history: List<ChatMessageEntity>,
+        persistUserMessage: Boolean = true
     ): ChatMessageEntity {
-        saveUserMessage(userInput, isVoice, activeScenario)
+        if (persistUserMessage) {
+            saveUserMessage(userInput, isVoice, activeScenario)
+        }
 
         val filteredHistory = history.filter { msg ->
             if (activeScenario.isNullOrBlank()) {
@@ -577,7 +592,7 @@ class CoachRepository(context: Context) {
         val conversationSummary = memoryEntity.conversationSummary
         val learnedFacts = memoryEntity.learnedFacts
 
-        val coachOutput: CoachJsonResponse = deepSeekRepository.getCoachResponse(
+        val rawCoachOutput: CoachJsonResponse = deepSeekRepository.getCoachResponse(
             userInput = userInput,
             apiKey = _apiKey.value,
             baseUrl = _baseUrl.value,
@@ -591,6 +606,9 @@ class CoachRepository(context: Context) {
             userInterests = userInterests,
             conversationSummary = conversationSummary,
             learnedFacts = learnedFacts
+        )
+        val coachOutput = rawCoachOutput.copy(
+            response = CoachResponseSanitizer.sanitize(rawCoachOutput.response)
         )
 
         // Update session state if present
@@ -622,7 +640,8 @@ class CoachRepository(context: Context) {
             sender = "COACH",
             text = coachOutput.response,
             feedback = coachOutput.feedback,
-            scenario = activeScenario
+            scenario = activeScenario,
+            profileId = _activeProfileId.value
         )
         val coachMsgId = dao.insertMessage(coachMessageEntity)
 

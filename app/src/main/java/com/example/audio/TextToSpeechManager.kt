@@ -8,6 +8,7 @@ import com.example.audio.kokoro.KokoroAudioCacheManager
 import com.example.audio.kokoro.KokoroModelManager
 import com.example.audio.kokoro.KokoroModelManifest
 import com.example.audio.kokoro.KokoroTtsEngine
+import com.example.data.api.CoachResponseSanitizer
 import com.example.data.model.CoachGender
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -188,18 +189,29 @@ class TextToSpeechManager(private val context: Context) : TextToSpeech.OnInitLis
 
     fun speak(text: String, messageId: Long? = null, gender: CoachGender? = null) {
         stop()
+        val spokenText = CoachResponseSanitizer.sanitize(text)
+        if (spokenText.isBlank()) {
+            Log.w("TextToSpeechManager", "Ignoring an empty TTS response after sanitization")
+            _currentPlayingMessageId.value = null
+            return
+        }
+        Log.d(
+            "TextToSpeechManager",
+            "TTS input prepared: sourceLength=${text.length}, spokenLength=${spokenText.length}, " +
+                "transportEnvelopeRemoved=${spokenText != text.trim()}"
+        )
         _currentPlayingMessageId.value = messageId
         val targetGender = gender ?: currentCoachGender
 
         when (_engineMode.value) {
             TtsEngineMode.KOKORO_OFFLINE -> {
-                speakWithKokoro(text, messageId, targetGender)
+                speakWithKokoro(spokenText, messageId, targetGender)
             }
             TtsEngineMode.EDGE_EXPERIMENTAL -> {
-                speakWithEdge(text, messageId, targetGender)
+                speakWithEdge(spokenText, messageId, targetGender)
             }
             TtsEngineMode.ANDROID_SYSTEM -> {
-                speakWithSystemTts(text, messageId, targetGender)
+                speakWithSystemTts(spokenText, messageId, targetGender)
             }
         }
     }

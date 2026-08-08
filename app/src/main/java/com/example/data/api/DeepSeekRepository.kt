@@ -94,6 +94,7 @@ class DeepSeekRepository {
         .build()
 
     private val coachAdapter = moshi.adapter(CoachJsonResponse::class.java)
+    private val stringAdapter = moshi.adapter(String::class.java)
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.HEADERS
@@ -612,7 +613,18 @@ Respond exclusively with valid JSON (no markdown formatting, no commentary):
             }
         }
 
-        // 3. Plain text response fallback
+        // 3. Some OpenAI-compatible endpoints return a truncated or double-encoded
+        // JSON envelope even though the response field itself is complete. Recover the
+        // field so transport formatting never leaks into the chat bubble.
+        val recoveredResponse = extractJsonStringField(cleaned, "response")
+        if (!recoveredResponse.isNullOrBlank()) {
+            return CoachJsonResponse(
+                feedback = extractJsonStringField(cleaned, "feedback"),
+                response = recoveredResponse
+            )
+        }
+
+        // 4. Plain text response fallback
         if (cleaned.isNotBlank()) {
             return CoachJsonResponse(
                 feedback = null,
@@ -621,6 +633,20 @@ Respond exclusively with valid JSON (no markdown formatting, no commentary):
         }
 
         throw ApiException("$providerName cevabı ayrıştırılamadı veya 'response' alanı boş.")
+    }
+
+    private fun extractJsonStringField(content: String, fieldName: String): String? {
+        val match = Regex(
+            "\"${Regex.escape(fieldName)}\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"",
+            RegexOption.DOT_MATCHES_ALL
+        ).find(content) ?: return null
+
+        val encodedJsonString = "\"${match.groupValues[1]}\""
+        return try {
+            stringAdapter.fromJson(encodedJsonString)?.trim()?.takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            match.groupValues[1].trim().takeIf { it.isNotBlank() }
+        }
     }
 
     private fun parseHttpError(providerName: String, code: Int): String {

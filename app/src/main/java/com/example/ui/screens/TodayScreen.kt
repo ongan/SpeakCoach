@@ -68,7 +68,7 @@ fun TodayScreen(
     onOpenProfileSelection: () -> Unit
 ) {
     val scrollState = rememberScrollState()
-    val coachGender = if (uiState.selectedCoach == "MALE") CoachGender.LEO else CoachGender.MAYA
+    val coachGender = uiState.selectedCoachGender
 
     val recommendedScenario = ScenarioCatalog.quickPracticeScenarios.firstOrNull()
 

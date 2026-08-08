@@ -74,6 +74,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.api.LlmProvider
+import com.example.ui.components.CoachAvatar
 import com.example.ui.components.NATIVE_LANGUAGES
 import com.example.ui.theme.Emerald500
 import com.example.ui.theme.Rose500
@@ -440,83 +441,119 @@ fun SettingsScreen(viewModel: CoachViewModel) {
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Text(
-                            text = "🔊 TTS Sağlayıcı / Motor Seçimi:",
+                            text = "🔊 Ses Motoru",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
+                        Text(
+                            text = "Koçun konuşurken kullanacağı sesi seçin.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        val modes = com.example.audio.TtsEngineMode.values()
+                        // Edge Consumer is temporarily unavailable. Keep the implementation
+                        // dormant so it can return later behind a maintained proxy service.
+                        val modes = listOf(
+                            com.example.audio.TtsEngineMode.KOKORO_OFFLINE,
+                            com.example.audio.TtsEngineMode.ANDROID_SYSTEM
+                        )
                         modes.forEach { mode ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
+                            val isSelected = uiState.ttsEngineMode == mode
+                            val title = when (mode) {
+                                com.example.audio.TtsEngineMode.KOKORO_OFFLINE -> "Kokoro Neural"
+                                com.example.audio.TtsEngineMode.ANDROID_SYSTEM -> "Android Sistem Sesi"
+                                com.example.audio.TtsEngineMode.EDGE_EXPERIMENTAL -> "Microsoft Edge"
+                            }
+                            val subtitle = when (mode) {
+                                com.example.audio.TtsEngineMode.KOKORO_OFFLINE -> "Doğal yapay zekâ sesi cihazda çalışır; internet gerekmez."
+                                com.example.audio.TtsEngineMode.ANDROID_SYSTEM -> "Cihazın yerleşik ses motorunu kullanır; hızlı ve düşük kaynak tüketir."
+                                com.example.audio.TtsEngineMode.EDGE_EXPERIMENTAL -> "Geçici olarak kullanılamıyor."
+                            }
+
+                            Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable { viewModel.updateTtsEngineMode(mode) }
-                                    .padding(vertical = 4.dp)
-                            ) {
-                                RadioButton(
-                                    selected = (uiState.ttsEngineMode == mode),
-                                    onClick = { viewModel.updateTtsEngineMode(mode) }
+                                    .testTag("tts_mode_${mode.name}"),
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+                                } else {
+                                    MaterialTheme.colorScheme.surface
+                                },
+                                border = androidx.compose.foundation.BorderStroke(
+                                    width = if (isSelected) 2.dp else 1.dp,
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+                                    }
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = { viewModel.updateTtsEngineMode(mode) }
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = mode.displayName,
+                                            text = title,
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
+                                            fontSize = 15.sp,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
                                         if (mode == com.example.audio.TtsEngineMode.KOKORO_OFFLINE) {
-                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Spacer(modifier = Modifier.height(5.dp))
                                             Surface(
                                                 color = Emerald500.copy(alpha = 0.2f),
-                                                shape = RoundedCornerShape(4.dp)
+                                                shape = RoundedCornerShape(6.dp)
                                             ) {
                                                 Text(
-                                                    text = "ÖNERİLEN • OFF-LINE",
-                                                    fontSize = 9.sp,
+                                                    text = "ÖNERİLEN • ÇEVRİMDIŞI",
+                                                    fontSize = 10.sp,
                                                     fontWeight = FontWeight.Bold,
                                                     color = Emerald500,
-                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                                )
-                                            }
-                                        } else if (mode == com.example.audio.TtsEngineMode.EDGE_EXPERIMENTAL) {
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Surface(
-                                                color = MaterialTheme.colorScheme.tertiaryContainer,
-                                                shape = RoundedCornerShape(4.dp)
-                                            ) {
-                                                Text(
-                                                    text = "DENEYSEL • CANLI",
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                                                 )
                                             }
                                         }
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = subtitle,
+                                            fontSize = 12.sp,
+                                            lineHeight = 17.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
-                                    val subtitle = when(mode) {
-                                        com.example.audio.TtsEngineMode.KOKORO_OFFLINE -> "Yapay zeka ses modeli cihazınızda çalışır (İnternetsiz & Yüksek Kalite)"
-                                        com.example.audio.TtsEngineMode.EDGE_EXPERIMENTAL -> "Microsoft Edge sunucuları üzerinden canlı ses sentezi (İnternet Gerektirir)"
-                                        com.example.audio.TtsEngineMode.ANDROID_SYSTEM -> "Cihazınızdaki yerleşik Android/Google TTS motoru (Garantili & Hızlı)"
+                                    if (isSelected) {
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.CheckCircle,
+                                            contentDescription = "Seçili",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(22.dp)
+                                        )
                                     }
-                                    Text(
-                                        text = subtitle,
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
                                 }
                             }
+                            Spacer(modifier = Modifier.height(9.dp))
                         }
 
                         Spacer(modifier = Modifier.height(12.dp))
 
                         // Active Engine Status Indicator Box
+                        val activeEngineName = when (uiState.ttsEngineMode) {
+                            com.example.audio.TtsEngineMode.KOKORO_OFFLINE -> "Kokoro Neural"
+                            com.example.audio.TtsEngineMode.ANDROID_SYSTEM -> "Android Sistem Sesi"
+                            com.example.audio.TtsEngineMode.EDGE_EXPERIMENTAL -> "Microsoft Edge"
+                        }
                         val activeStatusText = when (uiState.ttsStatus) {
                             is com.example.audio.TtsStatus.Idle -> "Hazır"
                             is com.example.audio.TtsStatus.ModelNotDownloaded -> "Model İndirilmedi"
@@ -535,7 +572,7 @@ fun SettingsScreen(viewModel: CoachViewModel) {
                         ) {
                             Column(modifier = Modifier.padding(10.dp)) {
                                 Text(
-                                    text = "🎯 Seçili Motor: ${uiState.ttsEngineMode.displayName}",
+                                    text = "🎯 Seçili: $activeEngineName",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.primary
@@ -564,29 +601,24 @@ fun SettingsScreen(viewModel: CoachViewModel) {
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(modifier = Modifier.padding(12.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Text(
+                                        text = "Kokoro v1.0 int8 Offline Model",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Surface(
+                                        color = if (isModelReady) Emerald500.copy(alpha = 0.2f) else MaterialTheme.colorScheme.errorContainer,
+                                        shape = RoundedCornerShape(6.dp)
                                     ) {
                                         Text(
-                                            text = "Kokoro v1.0 int8 Offline Model",
+                                            text = if (isModelReady) "HAZIR • ${String.format("%.1f", uiState.kokoroModelDiskSizeMb)} MB" else "İNDİRİLMEDİ",
+                                            fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
+                                            color = if (isModelReady) Emerald500 else MaterialTheme.colorScheme.onErrorContainer,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                         )
-                                        Surface(
-                                            color = if (isModelReady) Emerald500.copy(alpha = 0.2f) else MaterialTheme.colorScheme.errorContainer,
-                                            shape = RoundedCornerShape(4.dp)
-                                        ) {
-                                            Text(
-                                                text = if (isModelReady) "HAZIR (${String.format("%.1f", uiState.kokoroModelDiskSizeMb)} MB)" else "İNDİRİLMEDİ",
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isModelReady) Emerald500 else MaterialTheme.colorScheme.onErrorContainer,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
-                                        }
                                     }
 
                                     Spacer(modifier = Modifier.height(6.dp))
@@ -1530,7 +1562,10 @@ fun SettingsScreen(viewModel: CoachViewModel) {
                                 modifier = Modifier.padding(12.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Text(gender.avatarEmoji, fontSize = 28.sp)
+                                CoachAvatar(
+                                    coachGender = gender,
+                                    size = 92.dp
+                                )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(gender.coachName, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                 Text(

@@ -341,15 +341,20 @@ class KokoroTtsEngine(
         val generated = synchronized(nativeLock) {
             val engine = offlineTts
                 ?: throw IllegalStateException("Kokoro motoru başlatılmadı.")
-            engine.generateWithConfigAndCallback(
+            // The sherpa-onnx v1.13.4 Android JNI callback bridge can abort the
+            // whole process when Kotlin's generated lambda does not expose the
+            // exact invoke(float[]) signature expected by JNI. The synchronous
+            // API uses the same GenerationConfig without that unsafe bridge.
+            engine.generateWithConfig(
                 text = sentence,
                 config = config
-            ) {
-                if (!stopRequested && coroutineContext.isActive) 1 else 0
-            }
+            )
         }
 
         coroutineContext.ensureActive()
+        if (stopRequested) {
+            throw CancellationException("Kokoro synthesis was stopped.")
+        }
         if (generated.samples.isEmpty() || generated.sampleRate <= 0) {
             throw IllegalStateException("Kokoro boş ses verisi döndürdü.")
         }

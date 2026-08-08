@@ -89,6 +89,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.api.CoachResponseSanitizer
 import com.example.data.local.ChatMessageEntity
 import com.example.ui.theme.Amber500
 import com.example.ui.theme.Cyan400
@@ -121,6 +122,24 @@ fun ChatScreen(
     var textInput by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val context = LocalContext.current
+    val visibleMessages = remember(uiState.messages) {
+        uiState.messages
+            .filterNot { message ->
+                message.sender == "USER" && (
+                    message.text.startsWith("Let's practice ") ||
+                        message.text.startsWith("Let's start the scenario '") ||
+                        message.text.startsWith("Let me start Story Scene '") ||
+                        message.text.startsWith("Let's work on the extra study module:")
+                    )
+            }
+            .map { message ->
+                if (message.sender == "COACH") {
+                    message.copy(text = CoachResponseSanitizer.sanitize(message.text))
+                } else {
+                    message
+                }
+            }
+    }
 
     if (uiState.activeScenarioSession?.isCompleted == true) {
         SessionSummaryDialog(
@@ -139,9 +158,12 @@ fun ChatScreen(
     }
 
     // Scroll to bottom when new messages arrive
-    LaunchedEffect(uiState.messages.size) {
-        if (uiState.messages.isNotEmpty()) {
-            listState.animateScrollToItem(uiState.messages.size - 1)
+    LaunchedEffect(visibleMessages.size, uiState.isLoadingAi) {
+        val itemCount = visibleMessages.size +
+            (if (visibleMessages.isEmpty()) 1 else 0) +
+            (if (uiState.isLoadingAi) 1 else 0)
+        if (itemCount > 0) {
+            listState.animateScrollToItem(itemCount - 1)
         }
     }
 
@@ -565,13 +587,16 @@ fun ChatScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(bottom = 16.dp)
         ) {
-            if (uiState.messages.isEmpty()) {
+            if (visibleMessages.isEmpty()) {
                 item {
-                    EmptyChatWelcomeCard(onTopicSelected = { viewModel.selectScenario(it) })
+                    EmptyChatWelcomeCard(
+                        coachGender = uiState.selectedCoachGender,
+                        onTopicSelected = { viewModel.selectScenario(it) }
+                    )
                 }
             }
 
-            items(uiState.messages, key = { it.id }) { msg ->
+            items(visibleMessages, key = { it.id }) { msg ->
                 val translatedText = translations[msg.id]
                 val isTranslating = translatingIds.contains(msg.id)
 
@@ -594,7 +619,7 @@ fun ChatScreen(
 
             if (uiState.isLoadingAi) {
                 item {
-                    LoadingAiBubble()
+                    LoadingAiBubble(coachGender = uiState.selectedCoachGender)
                 }
             }
         }
@@ -766,17 +791,11 @@ fun ChatMessageItemCard(
             modifier = Modifier.fillMaxWidth()
         ) {
             if (!isUser && showCoachAvatar) {
-                // Coach Avatar
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Cyan600),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(coachGender.avatarEmoji, fontSize = 20.sp)
-                }
-                Spacer(modifier = Modifier.width(8.dp))
+                CoachAvatar(
+                    coachGender = coachGender,
+                    size = 44.dp
+                )
+                Spacer(modifier = Modifier.width(4.dp))
             }
 
             if (showChatBubbles) {
@@ -1092,20 +1111,14 @@ fun GrammarFeedbackWarningCard(feedbackText: String) {
 }
 
 @Composable
-fun LoadingAiBubble() {
+fun LoadingAiBubble(
+    coachGender: com.example.data.model.CoachGender = com.example.data.model.CoachGender.MAYA
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.padding(vertical = 4.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(Cyan600),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("🤖", fontSize = 18.sp)
-        }
+        CoachAvatar(coachGender = coachGender, size = 40.dp)
         Spacer(modifier = Modifier.width(8.dp))
         Card(
             shape = RoundedCornerShape(16.dp),
@@ -1122,7 +1135,7 @@ fun LoadingAiBubble() {
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "DeepSeek AI is thinking...",
+                    text = "${coachGender.coachName} yanıtını hazırlıyor…",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1132,7 +1145,10 @@ fun LoadingAiBubble() {
 }
 
 @Composable
-fun EmptyChatWelcomeCard(onTopicSelected: (String) -> Unit) {
+fun EmptyChatWelcomeCard(
+    coachGender: com.example.data.model.CoachGender = com.example.data.model.CoachGender.MAYA,
+    onTopicSelected: (String) -> Unit
+) {
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
@@ -1154,7 +1170,7 @@ fun EmptyChatWelcomeCard(onTopicSelected: (String) -> Unit) {
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "I am your DeepSeek AI English Language Coach. Speak or write to me in English, and I will guide our chat while providing instant grammar feedback!",
+                text = "I’m ${coachGender.coachName}, your AI English coach. Speak or write to me in English and I’ll guide the conversation with helpful feedback.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 8.dp)

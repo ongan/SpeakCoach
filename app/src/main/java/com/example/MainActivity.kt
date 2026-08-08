@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -73,9 +74,7 @@ fun MainAppShell(viewModel: CoachViewModel) {
     var showProfileSelectionDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.isOnboardingCompleted, uiState.profiles) {
-        if (!uiState.isOnboardingCompleted && uiState.profiles.isEmpty()) {
-            showOnboardingDialog = true
-        }
+        showOnboardingDialog = !uiState.isOnboardingCompleted && uiState.profiles.isEmpty()
     }
 
     if (showOnboardingDialog) {
@@ -144,7 +143,13 @@ fun MainAppShell(viewModel: CoachViewModel) {
                                 contentDescription = screen.title
                             )
                         },
-                        label = { Text(screen.title) },
+                        label = {
+                            Text(
+                                text = screen.title,
+                                fontSize = 9.sp,
+                                maxLines = 1
+                            )
+                        },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = DeepNavy,
                             selectedTextColor = DeepNavy,
