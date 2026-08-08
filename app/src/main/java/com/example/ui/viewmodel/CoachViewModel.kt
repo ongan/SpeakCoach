@@ -49,8 +49,8 @@ data class CoachUiState(
     val isOnboardingCompleted: Boolean = false,
     val autoPlayTts: Boolean = true,
     val ttsEngineMode: TtsEngineMode = TtsEngineMode.KOKORO_OFFLINE,
-    val fallbackEngineOption: com.example.audio.FallbackEngineOption = com.example.audio.FallbackEngineOption.ANDROID_SYSTEM,
-    val allowAutoAndroidFallback: Boolean = true,
+    val fallbackEngineOption: com.example.audio.FallbackEngineOption = com.example.audio.FallbackEngineOption.OFF,
+    val allowAutoAndroidFallback: Boolean = false,
     val azureSpeechKey: String = "",
     val azureSpeechRegion: String = "eastus",
     val femaleEdgeVoice: String = "en-US-AvaNeural",
@@ -453,6 +453,7 @@ class CoachViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteKokoroModel() {
+        ttsManager.kokoroTtsEngine.release()
         ttsManager.kokoroModelManager.deleteModel()
         ttsManager.clearAudioCache()
     }
@@ -476,7 +477,15 @@ class CoachViewModel(application: Application) : AndroidViewModel(application) {
 
     fun testTtsConnection() {
         val current = uiState.value
-        val voice = if (current.selectedCoachGender == com.example.data.model.CoachGender.LEO) current.maleEdgeVoice else current.femaleEdgeVoice
+        val voice = when (current.ttsEngineMode) {
+            TtsEngineMode.KOKORO_OFFLINE -> {
+                if (current.selectedCoachGender == com.example.data.model.CoachGender.LEO) current.kokoroMaleVoice else current.kokoroFemaleVoice
+            }
+            TtsEngineMode.EDGE_EXPERIMENTAL -> {
+                if (current.selectedCoachGender == com.example.data.model.CoachGender.LEO) current.maleEdgeVoice else current.femaleEdgeVoice
+            }
+            TtsEngineMode.ANDROID_SYSTEM -> "System Default"
+        }
 
         viewModelScope.launch {
             _isTestingTts.value = true
@@ -488,7 +497,11 @@ class CoachViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 _ttsTestResult.value = result
             } catch (e: Exception) {
-                val prov = if (current.ttsEngineMode == TtsEngineMode.KOKORO_OFFLINE) TtsProvider.KOKORO_OFFLINE else TtsProvider.EDGE_CONSUMER
+                val prov = when (current.ttsEngineMode) {
+                    TtsEngineMode.KOKORO_OFFLINE -> TtsProvider.KOKORO_OFFLINE
+                    TtsEngineMode.EDGE_EXPERIMENTAL -> TtsProvider.EDGE_CONSUMER
+                    TtsEngineMode.ANDROID_SYSTEM -> TtsProvider.ANDROID_SYSTEM
+                }
                 _ttsTestResult.value = TtsTestResult(
                     success = false,
                     provider = prov,

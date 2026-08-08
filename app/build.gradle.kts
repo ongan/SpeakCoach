@@ -117,6 +117,7 @@ dependencies {
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
   implementation(libs.commons.compress)
+  implementation("com.github.k2-fsa:sherpa-onnx:v1.13.4")
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)

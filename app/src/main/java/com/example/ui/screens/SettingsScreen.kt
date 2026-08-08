@@ -799,7 +799,7 @@ fun SettingsScreen(viewModel: CoachViewModel) {
                                     val desc = when(option) {
                                         com.example.audio.FallbackEngineOption.OFF -> "Yedek motor kullanma - Başarısızlık durumunda hatayı bildir"
                                         com.example.audio.FallbackEngineOption.KOKORO -> "Ana motor başarısız olursa (Kokoro hazırsa) Kokoro'ya düş"
-                                        com.example.audio.FallbackEngineOption.ANDROID_SYSTEM -> "Ana motor başarısız olursa yerleşik Android System TTS'ye düş (Önerilen)"
+                                        com.example.audio.FallbackEngineOption.ANDROID_SYSTEM -> "Ana motor başarısız olursa yerleşik Android System TTS'ye düş (Robotik olabilir)"
                                     }
                                     Text(
                                         text = desc,

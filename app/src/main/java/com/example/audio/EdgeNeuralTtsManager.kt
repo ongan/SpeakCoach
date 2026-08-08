@@ -23,6 +23,8 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
+import java.security.SecureRandom
+import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -35,7 +37,15 @@ class EdgeNeuralTtsManager(private val context: Context) {
     companion object {
         private const val TRUSTED_CLIENT_TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4"
         private const val WINDOWS_EPOCH_OFFSET_SECONDS = 11644473600L
+        private const val EDGE_CHROMIUM_FULL_VERSION = "143.0.3650.75"
+        private const val EDGE_CHROMIUM_MAJOR_VERSION = "143"
+        private const val SEC_MS_GEC_VERSION = "1-$EDGE_CHROMIUM_FULL_VERSION"
+        private const val EDGE_ORIGIN = "chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold"
+        private const val EDGE_BASE_URL = "speech.platform.bing.com/consumer/speech/synthesize/readaloud"
     }
+
+    private val secureRandom = SecureRandom()
+    private var clockSkewSeconds: Double = 0.0
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -149,7 +159,7 @@ class EdgeNeuralTtsManager(private val context: Context) {
                         provider = TtsProvider.KOKORO_OFFLINE,
                         engineName = "Kokoro Offline Neural",
                         voiceId = voice,
-                        httpStatusCode = 200,
+                        httpStatusCode = null,
                         message = "Kokoro çevrimdışı ses motoru hazır."
                     )
                 }
@@ -166,7 +176,11 @@ class EdgeNeuralTtsManager(private val context: Context) {
             }
         } catch (e: Exception) {
             val code = parseHttpStatusCode(e.message)
-            val provider = if (mode == TtsEngineMode.KOKORO_OFFLINE) TtsProvider.KOKORO_OFFLINE else TtsProvider.EDGE_CONSUMER
+            val provider = when (mode) {
+                TtsEngineMode.KOKORO_OFFLINE -> TtsProvider.KOKORO_OFFLINE
+                TtsEngineMode.EDGE_EXPERIMENTAL -> TtsProvider.EDGE_CONSUMER
+                TtsEngineMode.ANDROID_SYSTEM -> TtsProvider.ANDROID_SYSTEM
+            }
             TtsTestResult(
                 success = false,
                 provider = provider,
@@ -326,17 +340,42 @@ class EdgeNeuralTtsManager(private val context: Context) {
 
     private fun generateSecMsGec(): String {
         return try {
-            val unixSeconds = System.currentTimeMillis() / 1000L
-            val windowsSeconds = unixSeconds + WINDOWS_EPOCH_OFFSET_SECONDS
-            val roundedSeconds = windowsSeconds - (windowsSeconds % 300L)
-            val ticks = roundedSeconds * 10000000L
+            var unixSeconds = (System.currentTimeMillis() / 1000.0) + clockSkewSeconds
+            unixSeconds += WINDOWS_EPOCH_OFFSET_SECONDS
+            unixSeconds -= unixSeconds % 300.0
+            val ticks = (unixSeconds * 10000000.0).toLong()
             val strToHash = "${ticks}${TRUSTED_CLIENT_TOKEN}"
             val md = MessageDigest.getInstance("SHA-256")
-            val digest = md.digest(strToHash.toByteArray(Charsets.UTF_8))
-            digest.joinToString("") { "%02x".format(it) }
+            val digest = md.digest(strToHash.toByteArray(Charsets.US_ASCII))
+            digest.joinToString("") { "%02x".format(it) }.uppercase(Locale.US)
         } catch (e: Exception) {
             Log.e("EdgeNeuralTtsManager", "Sec-MS-GEC calculation error", e)
             ""
+        }
+    }
+
+    private fun generateConnectionId(): String = UUID.randomUUID().toString().replace("-", "")
+
+    private fun generateMuid(): String {
+        val bytes = ByteArray(16)
+        secureRandom.nextBytes(bytes)
+        return bytes.joinToString("") { "%02x".format(it) }.uppercase(Locale.US)
+    }
+
+    private fun adjustClockSkewFromServerDate(response: Response?): Boolean {
+        val serverDate = response?.header("Date") ?: return false
+        val formatter = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US)
+        formatter.timeZone = TimeZone.getTimeZone("UTC")
+        return try {
+            val parsed = formatter.parse(serverDate) ?: return false
+            val serverSeconds = parsed.time / 1000.0
+            val clientSeconds = System.currentTimeMillis() / 1000.0
+            clockSkewSeconds += serverSeconds - clientSeconds
+            Log.w("EdgeNeuralTtsManager", "Adjusted Edge clock skew by ${serverSeconds - clientSeconds}s")
+            true
+        } catch (e: ParseException) {
+            Log.w("EdgeNeuralTtsManager", "Could not parse Edge server date: $serverDate")
+            false
         }
     }
 
@@ -346,30 +385,38 @@ class EdgeNeuralTtsManager(private val context: Context) {
         speechRate: Float
     ): ByteArray = kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
 
-        val secMsGec = generateSecMsGec()
-        val urlsToTry = listOf(
-            "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=$TRUSTED_CLIENT_TOKEN&Sec-MS-GEC=$secMsGec",
-            "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=$TRUSTED_CLIENT_TOKEN"
-        )
-
-        fun attemptConnection(urlIndex: Int, lastErr: String = "") {
-            if (urlIndex >= urlsToTry.size) {
+        fun attemptConnection(attempt: Int, lastErr: String = "") {
+            if (attempt > 1) {
                 if (continuation.isActive) {
-                    continuation.resumeWith(Result.failure(Exception("Microsoft Edge WebSocket sunucusuna bağlantı kurulamadı ($lastErr).")))
+                    val message = if (lastErr.contains("HTTP 403")) {
+                        "Microsoft Edge Consumer TTS bu ag/cihaz/bolge icin reddedildi ($lastErr). Bu ucretsiz consumer endpoint resmi API degildir; Kokoro Offline veya kullanici izin verirse Android TTS fallback kullanin."
+                    } else {
+                        "Microsoft Edge WebSocket sunucusuna baglanti kurulamadi ($lastErr)."
+                    }
+                    continuation.resumeWith(Result.failure(Exception(message)))
+                    return
                 }
                 return
             }
 
-            val wssUrl = urlsToTry[urlIndex]
+            val secMsGec = generateSecMsGec()
+            val connectionId = generateConnectionId()
+            val wssUrl = "wss://$EDGE_BASE_URL/edge/v1" +
+                    "?TrustedClientToken=$TRUSTED_CLIENT_TOKEN" +
+                    "&ConnectionId=$connectionId" +
+                    "&Sec-MS-GEC=$secMsGec" +
+                    "&Sec-MS-GEC-Version=$SEC_MS_GEC_VERSION"
+            Log.i("EdgeNeuralTtsManager", "Opening Edge TTS WebSocket attempt=$attempt connectionId=$connectionId secMsGecVersion=$SEC_MS_GEC_VERSION")
             val request = Request.Builder()
                 .url(wssUrl)
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0")
-                .header("Origin", "chrome-extension://jdiccldimpdaibocbdbgmlgfldbpldlc")
-                .header("Accept-Encoding", "gzip, deflate, br")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/$EDGE_CHROMIUM_MAJOR_VERSION.0.0.0 Safari/537.36 Edg/$EDGE_CHROMIUM_MAJOR_VERSION.0.0.0")
+                .header("Origin", EDGE_ORIGIN)
+                .header("Accept-Encoding", "gzip, deflate, br, zstd")
                 .header("Accept-Language", "en-US,en;q=0.9")
                 .header("Pragma", "no-cache")
                 .header("Cache-Control", "no-cache")
-                .header("Sec-MS-GEC-Version", "1-131.0.0.0")
+                .header("Sec-WebSocket-Version", "13")
+                .header("Cookie", "muid=${generateMuid()};")
                 .build()
 
             val audioStream = ByteArrayOutputStream()
@@ -381,20 +428,20 @@ class EdgeNeuralTtsManager(private val context: Context) {
                         val configMessage = "X-Timestamp:${getIsoTimestamp()}\r\n" +
                                 "Content-Type:application/json; charset=utf-8\r\n" +
                                 "Path:speech.config\r\n\r\n" +
-                                "{\"context\":{\"synthesis\":{\"audio\":{\"metadataoptions\":{\"sentenceBoundaryEnabled\":\"false\",\"wordBoundaryEnabled\":\"false\"},\"outputFormat\":\"audio-24khz-48kbitrate-mono-mp3\"}}}}"
+                                "{\"context\":{\"synthesis\":{\"audio\":{\"metadataoptions\":{\"sentenceBoundaryEnabled\":\"false\",\"wordBoundaryEnabled\":\"false\"},\"outputFormat\":\"audio-24khz-48kbitrate-mono-mp3\"}}}}\r\n"
                         webSocket.send(configMessage)
 
                         val ssml = buildSsml(text, voiceName, speechRate)
-                        val requestId = UUID.randomUUID().toString().replace("-", "")
-                        val ssmlMessage = "X-RequestId:$requestId\r\n" +
+                        val ssmlMessage = "X-RequestId:${generateConnectionId()}\r\n" +
                                 "Content-Type:application/ssml+xml\r\n" +
+                                "X-Timestamp:${getIsoTimestamp()}Z\r\n" +
                                 "Path:ssml\r\n\r\n" +
                                 ssml
                         webSocket.send(ssmlMessage)
                     } catch (e: Exception) {
                         if (!hasResponded) {
                             hasResponded = true
-                            attemptConnection(urlIndex + 1, e.message ?: "Send error")
+                            attemptConnection(attempt + 1, e.message ?: "Send error")
                         }
                     }
                 }
@@ -408,7 +455,7 @@ class EdgeNeuralTtsManager(private val context: Context) {
                             if (bytes.isNotEmpty() && continuation.isActive) {
                                 continuation.resumeWith(Result.success(bytes))
                             } else {
-                                attemptConnection(urlIndex + 1, "Boş ses akışı")
+                                attemptConnection(attempt + 1, "Bos ses akisi")
                             }
                         }
                     }
@@ -426,10 +473,19 @@ class EdgeNeuralTtsManager(private val context: Context) {
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    Log.e("EdgeNeuralTtsManager", "WebSocket failure (attempt $urlIndex): ${t.message}", t)
+                    val responseCode = response?.code
+                    val errorText = if (responseCode != null) {
+                        "HTTP $responseCode (${response.message})"
+                    } else {
+                        t.message ?: "WebSocket hatasi"
+                    }
+                    Log.e("EdgeNeuralTtsManager", "WebSocket failure (attempt $attempt): $errorText", t)
                     if (!hasResponded) {
                         hasResponded = true
-                        attemptConnection(urlIndex + 1, t.message ?: "WebSocket hatası")
+                        if (responseCode == 403 && attempt == 0) {
+                            adjustClockSkewFromServerDate(response)
+                        }
+                        attemptConnection(attempt + 1, errorText)
                     }
                 }
 
@@ -440,7 +496,7 @@ class EdgeNeuralTtsManager(private val context: Context) {
                         if (bytes.isNotEmpty() && continuation.isActive) {
                             continuation.resumeWith(Result.success(bytes))
                         } else {
-                            attemptConnection(urlIndex + 1, "Bağlantı kapandı: $reason")
+                            attemptConnection(attempt + 1, "Baglanti kapandi: $reason")
                         }
                     }
                 }

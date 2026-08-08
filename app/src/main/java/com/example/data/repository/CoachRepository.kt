@@ -69,12 +69,12 @@ class CoachRepository(context: Context) {
     private val _ttsEngineMode = MutableStateFlow(initialEngineMode)
     val ttsEngineMode: StateFlow<TtsEngineMode> = _ttsEngineMode
 
-    private val savedFallbackOptionStr = prefs.getString("fallback_engine_option", com.example.audio.FallbackEngineOption.ANDROID_SYSTEM.name) ?: com.example.audio.FallbackEngineOption.ANDROID_SYSTEM.name
-    private val initialFallbackOption = try { com.example.audio.FallbackEngineOption.valueOf(savedFallbackOptionStr) } catch (e: Exception) { com.example.audio.FallbackEngineOption.ANDROID_SYSTEM }
+    private val savedFallbackOptionStr = prefs.getString("fallback_engine_option", com.example.audio.FallbackEngineOption.OFF.name) ?: com.example.audio.FallbackEngineOption.OFF.name
+    private val initialFallbackOption = try { com.example.audio.FallbackEngineOption.valueOf(savedFallbackOptionStr) } catch (e: Exception) { com.example.audio.FallbackEngineOption.OFF }
     private val _fallbackEngineOption = MutableStateFlow(initialFallbackOption)
     val fallbackEngineOption: StateFlow<com.example.audio.FallbackEngineOption> = _fallbackEngineOption
 
-    private val _allowAutoAndroidFallback = MutableStateFlow(prefs.getBoolean("allow_auto_android_fallback", true))
+    private val _allowAutoAndroidFallback = MutableStateFlow(prefs.getBoolean("allow_auto_android_fallback", false))
     val allowAutoAndroidFallback: StateFlow<Boolean> = _allowAutoAndroidFallback
 
     private val _kokoroFemaleVoice = MutableStateFlow(prefs.getString("kokoro_female_voice", "af_heart") ?: "af_heart")

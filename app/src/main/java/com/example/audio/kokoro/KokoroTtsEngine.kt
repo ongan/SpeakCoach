@@ -1,29 +1,27 @@
 package com.example.audio.kokoro
 
 import android.content.Context
-import android.os.Bundle
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import com.example.audio.TtsAudio
 import com.example.audio.TtsEngine
 import com.example.audio.TtsProvider
 import com.example.audio.TtsStatus
-import kotlinx.coroutines.CoroutineScope
+import com.k2fsa.sherpa.onnx.GenerationConfig
+import com.k2fsa.sherpa.onnx.OfflineTts
+import com.k2fsa.sherpa.onnx.OfflineTtsConfig
+import com.k2fsa.sherpa.onnx.OfflineTtsKokoroModelConfig
+import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.util.Locale
-import kotlin.coroutines.resume
 
 class KokoroTtsEngine(
     private val context: Context,
@@ -31,8 +29,9 @@ class KokoroTtsEngine(
     val cacheManager: KokoroAudioCacheManager = KokoroAudioCacheManager(context)
 ) : TtsEngine {
 
-    private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val initMutex = Mutex()
     private val synthMutex = Mutex()
+    private val nativeLock = Any()
 
     private val _status = MutableStateFlow<TtsStatus>(
         if (modelManager.isModelReady()) TtsStatus.Idle else TtsStatus.ModelNotDownloaded
@@ -42,36 +41,105 @@ class KokoroTtsEngine(
     @Volatile
     private var isEngineInitialized = false
     @Volatile
-    private var activeJob: Job? = null
+    private var stopRequested = false
+    @Volatile
+    private var offlineTts: OfflineTts? = null
 
     // Player for playing audio
     val player = AudioTrackPlayer()
 
     override suspend fun initialize(): Result<Unit> = withContext(Dispatchers.IO) {
-        if (!modelManager.isModelReady()) {
-            _status.value = TtsStatus.ModelNotDownloaded
-            return@withContext Result.failure(Exception("Kokoro ses modeli indirilmemiş."))
-        }
-
-        _status.value = TtsStatus.Initializing
-        return@withContext try {
-            val modelFile = modelManager.findModelFile("onnx")
-            val voicesFile = modelManager.findFileByName("voices.bin")
-            val tokensFile = modelManager.findFileByName("tokens.txt")
-
-            if (modelFile == null || voicesFile == null || tokensFile == null) {
-                _status.value = TtsStatus.Error(TtsProvider.KOKORO_OFFLINE, "Model dosyaları eksik veya bozuk.")
-                Result.failure(Exception("Model dosyası eksik veya bozuk."))
-            } else {
-                isEngineInitialized = true
-                _status.value = TtsStatus.Idle
-                Log.i("KokoroTtsEngine", "Kokoro Engine initialized successfully with model ${modelFile.name}")
-                Result.success(Unit)
+        initMutex.withLock {
+            if (isEngineInitialized && offlineTts != null) {
+                return@withLock Result.success(Unit)
             }
-        } catch (e: Exception) {
-            val msg = e.message ?: "Kokoro modeli başlatılamadı."
-            _status.value = TtsStatus.Error(TtsProvider.KOKORO_OFFLINE, msg)
-            Result.failure(Exception(msg))
+
+            if (!modelManager.isModelReady()) {
+                _status.value = TtsStatus.ModelNotDownloaded
+                return@withLock Result.failure(Exception("Kokoro ses modeli indirilmemiş."))
+            }
+
+            _status.value = TtsStatus.Initializing
+            try {
+                val modelFile = modelManager.findModelFile("onnx")
+                val voicesFile = modelManager.findFileByName("voices.bin")
+                val tokensFile = modelManager.findFileByName("tokens.txt")
+                val dataDir = modelManager.findFileByName("espeak-ng-data")
+                val lexiconUs = modelManager.findFileByName("lexicon-us-en.txt")
+                val lexiconZh = modelManager.findFileByName("lexicon-zh.txt")
+
+                if (modelFile == null || voicesFile == null || tokensFile == null ||
+                    dataDir == null || lexiconUs == null
+                ) {
+                    val msg = "Kokoro model dosyaları eksik veya bozuk."
+                    _status.value = TtsStatus.Error(TtsProvider.KOKORO_OFFLINE, msg)
+                    return@withLock Result.failure(Exception(msg))
+                }
+
+                val lexicons = listOfNotNull(lexiconUs, lexiconZh)
+                    .joinToString(",") { it.absolutePath }
+                val ruleFsts = listOf("phone-zh.fst", "date-zh.fst", "number-zh.fst")
+                    .mapNotNull { modelManager.findFileByName(it) }
+                    .joinToString(",") { it.absolutePath }
+                val threadCount = (Runtime.getRuntime().availableProcessors() - 1).coerceIn(2, 4)
+
+                val config = OfflineTtsConfig(
+                    model = OfflineTtsModelConfig(
+                        kokoro = OfflineTtsKokoroModelConfig(
+                            model = modelFile.absolutePath,
+                            voices = voicesFile.absolutePath,
+                            tokens = tokensFile.absolutePath,
+                            dataDir = dataDir.absolutePath,
+                            lexicon = lexicons,
+                            lengthScale = 1.0f
+                        ),
+                        numThreads = threadCount,
+                        debug = false,
+                        provider = "cpu"
+                    ),
+                    ruleFsts = ruleFsts,
+                    maxNumSentences = 1,
+                    silenceScale = 0.2f
+                )
+
+                val createdEngine = OfflineTts(config = config)
+                val sampleRate = createdEngine.sampleRate()
+                val speakerCount = createdEngine.numSpeakers()
+                val highestConfiguredSpeaker = KokoroModelManifest.ALL_VOICES.maxOf { it.speakerId }
+
+                if (sampleRate <= 0 || speakerCount <= highestConfiguredSpeaker) {
+                    createdEngine.release()
+                    val msg = "Kokoro motoru modeli açamadı (örnekleme=$sampleRate, ses sayısı=$speakerCount)."
+                    _status.value = TtsStatus.Error(TtsProvider.KOKORO_OFFLINE, msg)
+                    return@withLock Result.failure(Exception(msg))
+                }
+
+                synchronized(nativeLock) {
+                    offlineTts?.release()
+                    offlineTts = createdEngine
+                    isEngineInitialized = true
+                    stopRequested = false
+                }
+
+                _status.value = TtsStatus.Idle
+                Log.i(
+                    "KokoroTtsEngine",
+                    "Kokoro initialized: ${modelFile.name}, sampleRate=$sampleRate, speakers=$speakerCount, threads=$threadCount"
+                )
+                Result.success(Unit)
+            } catch (e: UnsatisfiedLinkError) {
+                isEngineInitialized = false
+                val msg = "Kokoro yerel kütüphanesi yüklenemedi: ${e.message ?: "JNI bulunamadı"}"
+                _status.value = TtsStatus.Error(TtsProvider.KOKORO_OFFLINE, msg)
+                Log.e("KokoroTtsEngine", msg, e)
+                Result.failure(IllegalStateException(msg, e))
+            } catch (e: Exception) {
+                isEngineInitialized = false
+                val msg = e.message ?: "Kokoro modeli başlatılamadı."
+                _status.value = TtsStatus.Error(TtsProvider.KOKORO_OFFLINE, msg)
+                Log.e("KokoroTtsEngine", msg, e)
+                Result.failure(Exception(msg, e))
+            }
         }
     }
 
@@ -115,28 +183,36 @@ class KokoroTtsEngine(
         }
 
         synthMutex.withLock {
+            stopRequested = false
+            currentCoroutineContext().ensureActive()
             _status.value = TtsStatus.Synthesizing(TtsProvider.KOKORO_OFFLINE, effectiveVoiceId)
 
             try {
                 val sentences = splitTextIntoSentences(cleanText)
-                val allSamples = ArrayList<Float>()
-                var detectedSampleRate = 22050
+                val sentenceAudio = ArrayList<FloatArray>(sentences.size)
+                var totalSampleCount = 0
+                var detectedSampleRate = 24000
 
                 for (sentence in sentences) {
+                    currentCoroutineContext().ensureActive()
                     if (sentence.isBlank()) continue
                     val (sentenceSamples, sr) = generateSpeechSamples(sentence, effectiveVoiceId, clampedSpeed)
                     if (sr > 0) detectedSampleRate = sr
-                    for (s in sentenceSamples) {
-                        allSamples.add(s.coerceIn(-1.0f, 1.0f))
-                    }
+                    sentenceAudio.add(sentenceSamples)
+                    totalSampleCount += sentenceSamples.size
                 }
 
-                if (allSamples.isEmpty()) {
+                if (totalSampleCount == 0) {
                     _status.value = TtsStatus.Error(TtsProvider.KOKORO_OFFLINE, "Ses sentezi tamamlanamadı.")
                     return@withContext Result.failure(Exception("Ses sentezi boş sonuç döndürdü."))
                 }
 
-                val finalSamples = allSamples.toFloatArray()
+                val finalSamples = FloatArray(totalSampleCount)
+                var writeOffset = 0
+                for (samples in sentenceAudio) {
+                    samples.copyInto(finalSamples, destinationOffset = writeOffset)
+                    writeOffset += samples.size
+                }
                 val audio = TtsAudio(
                     samples = finalSamples,
                     sampleRate = detectedSampleRate,
@@ -150,6 +226,9 @@ class KokoroTtsEngine(
                 _status.value = TtsStatus.Idle
                 Result.success(audio)
 
+            } catch (e: CancellationException) {
+                _status.value = TtsStatus.Idle
+                throw e
             } catch (e: Exception) {
                 Log.e("KokoroTtsEngine", "Synthesis error: ${e.message}", e)
                 val msg = e.message ?: "Ses üretimi sırasında bir hata oluştu."
@@ -160,8 +239,7 @@ class KokoroTtsEngine(
     }
 
     override fun stop() {
-        activeJob?.cancel()
-        activeJob = null
+        stopRequested = true
         player.stop()
         if (_status.value is TtsStatus.Synthesizing || _status.value is TtsStatus.Playing) {
             _status.value = TtsStatus.Idle
@@ -170,7 +248,11 @@ class KokoroTtsEngine(
 
     override fun release() {
         stop()
-        isEngineInitialized = false
+        synchronized(nativeLock) {
+            offlineTts?.release()
+            offlineTts = null
+            isEngineInitialized = false
+        }
         _status.value = if (modelManager.isModelReady()) TtsStatus.Idle else TtsStatus.ModelNotDownloaded
     }
 
@@ -184,109 +266,33 @@ class KokoroTtsEngine(
         sentence: String,
         voiceId: String,
         speed: Float
-    ): Pair<FloatArray, Int> = withContext(Dispatchers.Main) {
-        val isMale = voiceId.startsWith("am_")
-        val tempFile = File(context.cacheDir, "kokoro_utt_${System.currentTimeMillis()}_${(0..999).random()}.wav")
-        val utteranceId = "utt_${System.currentTimeMillis()}_${(0..999).random()}"
+    ): Pair<FloatArray, Int> {
+        val coroutineContext = currentCoroutineContext()
+        coroutineContext.ensureActive()
+        val speakerId = KokoroModelManifest.getSpeakerId(voiceId)
+        val config = GenerationConfig(
+            silenceScale = 0.2f,
+            speed = speed,
+            sid = speakerId
+        )
 
-        var ttsObj: TextToSpeech? = null
-        val samplesPair = suspendCancellableCoroutine<Pair<FloatArray, Int>> { cont ->
-            ttsObj = TextToSpeech(context.applicationContext) { status ->
-                if (status == TextToSpeech.SUCCESS) {
-                    try {
-                        ttsObj?.setLanguage(Locale.US)
-                        ttsObj?.setSpeechRate(speed)
-                        ttsObj?.setPitch(if (isMale) 0.9f else 1.15f)
-
-                        ttsObj?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                            override fun onStart(uttId: String?) {}
-
-                            override fun onDone(uttId: String?) {
-                                if (uttId == utteranceId) {
-                                    val (floats, rate) = parseWavFile(tempFile)
-                                    tempFile.delete()
-                                    if (cont.isActive) cont.resume(Pair(floats, rate))
-                                }
-                            }
-
-                            @Deprecated("Deprecated in Java")
-                            override fun onError(uttId: String?) {
-                                if (uttId == utteranceId) {
-                                    tempFile.delete()
-                                    if (cont.isActive) cont.resume(Pair(FloatArray(0), 22050))
-                                }
-                            }
-                        })
-
-                        val params = Bundle()
-                        val res = ttsObj?.synthesizeToFile(sentence, params, tempFile, utteranceId)
-                        if (res != TextToSpeech.SUCCESS) {
-                            tempFile.delete()
-                            if (cont.isActive) cont.resume(Pair(FloatArray(0), 22050))
-                        }
-                    } catch (e: Exception) {
-                        tempFile.delete()
-                        if (cont.isActive) cont.resume(Pair(FloatArray(0), 22050))
-                    }
-                } else {
-                    if (cont.isActive) cont.resume(Pair(FloatArray(0), 22050))
-                }
+        val generated = synchronized(nativeLock) {
+            val engine = offlineTts
+                ?: throw IllegalStateException("Kokoro motoru başlatılmadı.")
+            engine.generateWithConfigAndCallback(
+                text = sentence,
+                config = config
+            ) {
+                if (!stopRequested && coroutineContext.isActive) 1 else 0
             }
         }
 
-        try {
-            ttsObj?.shutdown()
-        } catch (e: Exception) {
-            Log.e("KokoroTtsEngine", "Error shutting down temp TTS: ${e.message}")
+        coroutineContext.ensureActive()
+        if (generated.samples.isEmpty() || generated.sampleRate <= 0) {
+            throw IllegalStateException("Kokoro boş ses verisi döndürdü.")
         }
-
-        return@withContext samplesPair
+        return generated.samples to generated.sampleRate
     }
 
-    private fun parseWavFile(wavFile: File): Pair<FloatArray, Int> {
-        if (!wavFile.exists() || wavFile.length() < 44) {
-            return Pair(FloatArray(0), 22050)
-        }
-        return try {
-            val bytes = wavFile.readBytes()
-            val sampleRate = (bytes[24].toInt() and 0xFF) or
-                    ((bytes[25].toInt() and 0xFF) shl 8) or
-                    ((bytes[26].toInt() and 0xFF) shl 16) or
-                    ((bytes[27].toInt() and 0xFF) shl 24)
-
-            var dataOffset = 44
-            for (i in 36 until bytes.size - 8) {
-                if (bytes[i] == 'd'.code.toByte() &&
-                    bytes[i + 1] == 'a'.code.toByte() &&
-                    bytes[i + 2] == 't'.code.toByte() &&
-                    bytes[i + 3] == 'a'.code.toByte()
-                ) {
-                    dataOffset = i + 8
-                    break
-                }
-            }
-
-            val pcmLength = bytes.size - dataOffset
-            val numShorts = pcmLength / 2
-            if (numShorts <= 0) return Pair(FloatArray(0), 22050)
-
-            val floats = FloatArray(numShorts)
-            for (i in 0 until numShorts) {
-                val idx = dataOffset + i * 2
-                if (idx + 1 < bytes.size) {
-                    val low = bytes[idx].toInt() and 0xFF
-                    val high = bytes[idx + 1].toInt()
-                    val shortVal = (high shl 8) or low
-                    floats[i] = shortVal / 32768.0f
-                }
-            }
-
-            val validRate = if (sampleRate in 8000..48000) sampleRate else 22050
-            Pair(floats, validRate)
-        } catch (e: Exception) {
-            Log.e("KokoroTtsEngine", "Failed to parse WAV file: ${e.message}")
-            Pair(FloatArray(0), 22050)
-        }
-    }
 }
 

@@ -9,6 +9,7 @@ import com.example.audio.kokoro.KokoroModelManager
 import com.example.audio.kokoro.KokoroModelManifest
 import com.example.audio.kokoro.KokoroTtsEngine
 import com.example.data.model.CoachGender
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -34,11 +35,11 @@ class TextToSpeechManager(private val context: Context) : TextToSpeech.OnInitLis
     private val _engineMode = MutableStateFlow(TtsEngineMode.KOKORO_OFFLINE)
     val engineMode: StateFlow<TtsEngineMode> = _engineMode.asStateFlow()
 
-    private val _fallbackEngineOption = MutableStateFlow(FallbackEngineOption.ANDROID_SYSTEM)
+    private val _fallbackEngineOption = MutableStateFlow(FallbackEngineOption.OFF)
     val fallbackEngineOption: StateFlow<FallbackEngineOption> = _fallbackEngineOption.asStateFlow()
 
     // Legacy flag compatibility
-    private val _allowAutoAndroidFallback = MutableStateFlow(true)
+    private val _allowAutoAndroidFallback = MutableStateFlow(false)
     val allowAutoAndroidFallback: StateFlow<Boolean> = _allowAutoAndroidFallback.asStateFlow()
 
     private val _ttsStatus = MutableStateFlow<TtsStatus>(
@@ -127,8 +128,6 @@ class TextToSpeechManager(private val context: Context) : TextToSpeech.OnInitLis
         _allowAutoAndroidFallback.value = allow
         if (!allow) {
             _fallbackEngineOption.value = FallbackEngineOption.OFF
-        } else if (_fallbackEngineOption.value == FallbackEngineOption.OFF) {
-            _fallbackEngineOption.value = FallbackEngineOption.ANDROID_SYSTEM
         }
     }
 
@@ -257,6 +256,11 @@ class TextToSpeechManager(private val context: Context) : TextToSpeech.OnInitLis
                     _ttsStatus.value = TtsStatus.Error(TtsProvider.KOKORO_OFFLINE, errMsg)
                     handleFallback(TtsProvider.KOKORO_OFFLINE, errMsg, text, messageId, targetGender)
                 }
+            } catch (e: CancellationException) {
+                _isPlaying.value = false
+                _currentPlayingMessageId.value = null
+                _ttsStatus.value = TtsStatus.Idle
+                throw e
             } catch (e: Exception) {
                 val errMsg = e.message ?: "Kokoro hatası"
                 _isPlaying.value = false
@@ -322,7 +326,11 @@ class TextToSpeechManager(private val context: Context) : TextToSpeech.OnInitLis
             }
             FallbackEngineOption.ANDROID_SYSTEM -> {
                 if (failedProvider != TtsProvider.ANDROID_SYSTEM) {
-                    Log.i("TextToSpeechManager", "Falling back to Android System TTS...")
+                    Log.i("TextToSpeechManager", "Falling back to Android System TTS after $failedProvider failed.")
+                    _ttsStatus.value = TtsStatus.Error(
+                        failedProvider,
+                        "$errorMsg Android System TTS fallback calistiriliyor."
+                    )
                     speakWithSystemTts(text, messageId, targetGender)
                 }
             }
@@ -372,7 +380,7 @@ class TextToSpeechManager(private val context: Context) : TextToSpeech.OnInitLis
                             provider = TtsProvider.KOKORO_OFFLINE,
                             engineName = "Kokoro Offline Neural",
                             voiceId = voice,
-                            httpStatusCode = 200,
+                            httpStatusCode = null,
                             message = "Kokoro yerel ses üretimi başarılı!"
                         )
                     } else {

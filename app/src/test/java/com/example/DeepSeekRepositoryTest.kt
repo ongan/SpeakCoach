@@ -12,7 +12,7 @@ class DeepSeekRepositoryTest {
 
     @Test
     fun testLlmProviderFromBaseUrl() {
-        assertEquals(LlmProvider.NVIDIA, LlmProvider.fromBaseUrl("https://integrate.api.nvidia.com/v1"))
+        assertEquals(LlmProvider.CUSTOM, LlmProvider.fromBaseUrl("https://integrate.api.nvidia.com/v1"))
         assertEquals(LlmProvider.DEEPSEEK, LlmProvider.fromBaseUrl("https://api.deepseek.com"))
         assertEquals(LlmProvider.GROQ, LlmProvider.fromBaseUrl("https://api.groq.com/openai/v1"))
         assertEquals(LlmProvider.CUSTOM, LlmProvider.fromBaseUrl("https://my-custom-endpoint.com/v1"))
@@ -20,10 +20,10 @@ class DeepSeekRepositoryTest {
 
     @Test
     fun testLegacyModelAutoMigration() {
-        // NVIDIA base URL with legacy R1 model should migrate to V4 Flash
+        // Removed providers are treated as custom endpoints and keep their explicit model.
         val nvidiaUrl = "https://integrate.api.nvidia.com/v1"
         assertEquals(
-            "deepseek-ai/deepseek-v4-flash",
+            "deepseek-ai/deepseek-r1",
             DeepSeekRepository.migrateModelName(nvidiaUrl, "deepseek-ai/deepseek-r1")
         )
         // Groq base URL migration

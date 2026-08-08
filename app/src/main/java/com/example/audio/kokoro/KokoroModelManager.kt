@@ -58,8 +58,10 @@ class KokoroModelManager(private val context: Context) {
         val hasOnnx = files.any { it.extension == "onnx" }
         val hasVoices = files.any { it.name == "voices.bin" }
         val hasTokens = files.any { it.name == "tokens.txt" }
+        val hasLexicon = files.any { it.name == "lexicon-us-en.txt" }
+        val hasEspeakData = files.any { it.name == "espeak-ng-data" && it.isDirectory }
 
-        return hasOnnx && hasVoices && hasTokens
+        return hasOnnx && hasVoices && hasTokens && hasLexicon && hasEspeakData
     }
 
     fun checkModelStatus(): TtsStatus {
@@ -154,8 +156,10 @@ class KokoroModelManager(private val context: Context) {
                 val onnxFile = extractedFiles.firstOrNull { it.extension == "onnx" }
                 val voicesFile = extractedFiles.firstOrNull { it.name == "voices.bin" }
                 val tokensFile = extractedFiles.firstOrNull { it.name == "tokens.txt" }
+                val lexiconFile = extractedFiles.firstOrNull { it.name == "lexicon-us-en.txt" }
+                val espeakDataDir = extractedFiles.firstOrNull { it.name == "espeak-ng-data" && it.isDirectory }
 
-                if (onnxFile == null || voicesFile == null || tokensFile == null) {
+                if (onnxFile == null || voicesFile == null || tokensFile == null || lexiconFile == null || espeakDataDir == null) {
                     archivePartFile.delete()
                     extractTargetDir.deleteRecursively()
                     val msg = "Model dosyası eksik veya bozuk"
